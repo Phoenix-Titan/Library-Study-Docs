@@ -30,7 +30,14 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | Guide | What it covers | Lines |
 |---|---|---|
 | [NestJS](library/NESTJS_GUIDE.md) | Modules, DI, controllers, pipes/guards/interceptors/filters, validation + **custom DTO validators**, Prisma/TypeORM, JWT auth, Swagger, WebSockets, testing | 3071 |
+| [Fastify (v5)](library/FASTIFY_GUIDE.md) | Routing, full hook lifecycle, JSON-Schema validation/serialization, plugins & decorators, TypeScript type providers, core plugins (cors/jwt/multipart/swagger/websocket), Pino logging, testing with `inject()` | 2152 |
 | [Prisma ORM](library/PRISMA_ORM_GUIDE.md) | Schema, relations, migrations, full CRUD/query API, transactions, raw queries, seeding, Next.js singleton | 1875 |
+
+### Databases & Caching
+| Guide | What it covers | Lines |
+|---|---|---|
+| [PostgreSQL (beginner→advanced)](library/POSTGRESQL_GUIDE.md) | PG 17: data types, DDL/DML, joins, CTEs & window functions, JSONB, indexing, `EXPLAIN ANALYZE`, transactions/MVCC, PL/pgSQL & triggers, partitioning, RLS, extensions (pgvector), `pg`/`pgx` clients | 2640 |
+| [Redis](library/REDIS_GUIDE.md) | Redis 7/8: all data types, Streams, pub/sub, transactions & Lua, persistence, caching patterns, eviction, distributed locks & rate limiting, Sentinel/Cluster, ACLs/TLS, vector search, `redis-cli`/`ioredis`/`go-redis` | 2314 |
 
 ### Backend — Go
 | Guide | What it covers | Lines |
@@ -40,6 +47,14 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | [Go Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) | Upgrader, two-goroutine model, ping/pong, full Hub chat server, JS + Go clients, scaling | 1565 |
 | [Go ent ORM](library/GO_ENT_ORM_GUIDE.md) | Schema-as-code, fields/edges, codegen, CRUD, predicates, eager loading, transactions, hooks | 1897 |
 | [Go JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) | Argon2id hashing (PHC, constant-time verify), golang-jwt v5, access/refresh tokens, auth middleware, RBAC | 1979 |
+| [Go — File System, OS & CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) | Reading/writing files, dirs & paths (`filepath`), `io/fs`/`embed`/`os.Root`, **running external commands** (`os/exec`: npm/go get/pip/git…), env vars, system info, signals, **building CLIs** (`flag`, Cobra, Viper), archives, cross-platform | 2980 |
+| [gRPC & RPC with Go](library/GO_GRPC_RPC_GUIDE.md) | `net/rpc` basics, Protocol Buffers (proto3), buf toolchain, all 4 streaming types, metadata, status errors, interceptors (auth/logging), TLS/mTLS, deadlines/retries, gRPC-Gateway & ConnectRPC, reflection, bufconn testing | 2469 |
+
+### Auth & Backend Platforms
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Better Auth (Standalone, Next.js & Go)](library/BETTERAUTH_GUIDE.md) | `betterAuth()` server & client, DB adapters, email/password & OAuth, sessions/cookies, plugins (2FA/passkeys/org/JWT/bearer), Next.js App Router integration, **verifying Better Auth JWTs in a Go backend** | 2039 |
+| [Supabase (with Next.js & Go)](library/SUPABASE_GUIDE.md) | Postgres + Auth/Realtime/Storage/Edge Functions, **Row Level Security**, supabase-js query builder, `@supabase/ssr` for Next.js, CLI/migrations/types, **Go: direct `pgx` + verifying Supabase Auth JWTs**, pgvector | 2222 |
 
 ### Infrastructure & Protocols
 | Guide | What it covers | Lines |
@@ -57,24 +72,31 @@ Pick the track that matches your goal. Within a track, follow the order listed.
 1. [React 19](library/REACT_19_GUIDE.md) → 2. [Tailwind](library/TAILWIND_CHEATSHEET.md) → 3. [Next.js 16](library/NEXTJS_16_GUIDE.md) → 4. [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) → 5. [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) → 6. [Motion](library/MOTION_ANIMATION_GUIDE.md) → 7. [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) → 8. [Zustand](library/ZUSTAND_GUIDE.md) → 9. [Material UI](library/MATERIAL_UI_GUIDE.md)
 
 **② Full-stack with Node**
-[Next.js 16](library/NEXTJS_16_GUIDE.md) → [NestJS](library/NESTJS_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
+[Next.js 16](library/NEXTJS_16_GUIDE.md) → [Fastify](library/FASTIFY_GUIDE.md) / [NestJS](library/NESTJS_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
 
 **③ Backend with Go**
-[Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) → [Gin + uploads](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) → [JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) → [ent ORM](library/GO_ENT_ORM_GUIDE.md) → [Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
+[Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) → [Gin + uploads](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) → [JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [ent ORM](library/GO_ENT_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) → [gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) → [File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
 
-**④ Mobile**
+**④ Data layer (databases & caching)**
+[PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) (Node) / [ent ORM](library/GO_ENT_ORM_GUIDE.md) (Go) → [Redis](library/REDIS_GUIDE.md)
+
+**⑤ Auth & backend platforms**
+[Better Auth](library/BETTERAUTH_GUIDE.md) (own your data: Next.js front + Go API) — or — [Supabase](library/SUPABASE_GUIDE.md) (managed Postgres + auth/realtime/storage, Next.js + Go). Pair either with [PostgreSQL](library/POSTGRESQL_GUIDE.md).
+
+**⑥ Mobile**
 [React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md)
 
-**⑤ Specialized**
-[FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — when you need a file-transfer service.
+**⑦ Specialized**
+[Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) — service-to-service APIs · [Go File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) — tooling & scripts · [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — file-transfer services.
 
 ---
 
 ## ✅ Accuracy & Verification Notes
 
 - **Written for 2026.** Fast-moving APIs are flagged inside each guide with **⚡ Version notes** (and **🆕 React 19** markers in the React guide). Always confirm exact package versions against official docs when you build.
-- **Go code was syntax-verified.** All ~230 Go code blocks across the six Go guides were parsed with the Go toolchain (`gofmt`); one real bug (an invalid variadic parameter in the JWT guide) was found and fixed. Note: this verifies *syntax*, not full type-checking of examples that depend on third-party packages.
-- **Security-critical code** (Argon2 params, JWT algorithm validation, file-upload validation) follows current best practices but should be reviewed against official guidance before production use.
+- **Go code was syntax-verified (original six Go guides).** All ~230 Go code blocks across the original six Go guides were parsed with the Go toolchain (`gofmt`); one real bug (an invalid variadic parameter in the JWT guide) was found and fixed. Note: this verifies *syntax*, not full type-checking of examples that depend on third-party packages.
+- **Newly added guides** — Redis, Fastify, PostgreSQL, Go File System/OS/CLI, Better Auth, Supabase, and Go gRPC/RPC — are written for 2026 accuracy with runnable, commented examples, but their code has **not yet** been run through the toolchain/linters. Confirm exact APIs and package versions against official docs before production use. For libraries that move fast or whose exact symbol names matter (e.g. Better Auth plugins), inline notes flag where to double-check.
+- **Security-critical code** (Argon2 params, JWT algorithm validation, file-upload validation, Supabase RLS, command-injection avoidance in `os/exec`) follows current best practices but should be reviewed against official guidance before production use.
 
 ---
 
