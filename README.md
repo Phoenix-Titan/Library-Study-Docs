@@ -62,6 +62,13 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | [Docker & Docker Compose](library/DOCKER_GUIDE.md) | Images/containers, Dockerfiles, multi-stage builds, volumes, networking, Compose, real stacks, deployment | 802 |
 | [FTP Server — Go & Node](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) | FTP/FTPS/SFTP, Go (`ftpserverlib`) + Node (`ftp-srv`) servers, SFTP skeletons, firewall/Docker, security | 1709 |
 
+### Shells & Scripting
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Bash Scripting (beginner→advanced)](library/BASH_SCRIPTING_GUIDE.md) | Bash 5.2+: quoting, variables & parameter expansion, conditionals/loops, functions & arrays, redirection & process substitution, `set -euo pipefail`/`trap`, grep/sed/awk/find/xargs, `getopts`, regex, robust-scripting recipes, portability/CRLF gotchas | 2440 |
+| [Windows CMD & Batch (beginner→advanced)](library/WINDOWS_CMD_BATCH_GUIDE.md) | `cmd.exe` & `.bat`/`.cmd`: built-in commands, `set`/arithmetic/prompts, arg modifiers (`%~dp0`), `if`/`for` (all forms incl. `for /F`), **delayed expansion**, `call`/`goto` subroutines, redirection, errorlevels, string ops, escaping reference, system one-liners | 1957 |
+| [PowerShell (beginner→advanced)](library/POWERSHELL_GUIDE.md) | 5.1 vs 7: the object pipeline, cmdlets & `Get-Member`, `Select`/`Where`/`ForEach-Object`, operators & regex, collections/hashtables, functions & `[CmdletBinding()]`, error handling, filesystem/registry providers, `PSCustomObject`/JSON/CSV, modules, `Invoke-RestMethod`, execution policy, 5.1↔7 encoding gotchas | 2091 |
+
 ---
 
 ## 🧭 Suggested Learning Tracks
@@ -86,7 +93,10 @@ Pick the track that matches your goal. Within a track, follow the order listed.
 **⑥ Mobile**
 [React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md)
 
-**⑦ Specialized**
+**⑦ Shells & scripting (automation)**
+[Bash](library/BASH_SCRIPTING_GUIDE.md) (Linux/macOS/CI/Git Bash) · [PowerShell](library/POWERSHELL_GUIDE.md) (modern Windows + cross-platform automation) · [Windows CMD & Batch](library/WINDOWS_CMD_BATCH_GUIDE.md) (legacy/`.bat`, still everywhere). On Windows, learn PowerShell for new work and CMD for reading existing scripts.
+
+**⑧ Specialized**
 [Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) — service-to-service APIs · [Go File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) — tooling & scripts · [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — file-transfer services.
 
 ---
