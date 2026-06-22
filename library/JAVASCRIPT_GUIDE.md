@@ -30,7 +30,7 @@
 13. [Modules](#13-modules) **[I]**
 14. [File System, OS & Command Execution (via a Runtime)](#14-file-system-os--command-execution-via-a-runtime) **[I]**
 15. [Error Handling](#15-error-handling) **[I]**
-16. [Browser Basics](#16-browser-basics) **[B/I]**
+16. [The DOM & Browser APIs](#16-the-dom--browser-apis) **[B/I]**
 17. [Advanced & Metaprogramming](#17-advanced--metaprogramming) **[A]**
 18. [Tooling Overview](#18-tooling-overview)
 19. [Gotchas & Best Practices](#19-gotchas--best-practices) **[A]**
@@ -707,40 +707,301 @@ throw new ValidationError("email", "invalid email");
 
 ---
 
-## 16. Browser Basics
+## 16. The DOM & Browser APIs
+
+Everything so far is the JavaScript *language*. In a browser, JS's main job is to read and change the page. The page is represented as the **DOM (Document Object Model)** — a live, in-memory tree of objects that mirrors your HTML. Each HTML tag becomes a **node** (specifically an *element node*); text becomes *text nodes*. JS can read this tree, change it, and react to user actions — and the browser instantly re-renders.
+
+> **Why a tree?** HTML nests (`<body>` contains `<div>` contains `<p>`…), so the natural representation is a tree of parent/child nodes. The global `document` object is your entry point to it; `window` is the global object (the tab itself).
+
+### 16.1 Selecting elements
+
+You almost always start by *finding* the element(s) you want to work with. There are several methods; in modern code you mostly use `querySelector`/`querySelectorAll`, which take **CSS selectors** (the same syntax you use in stylesheets).
 
 ```js
-// Select & manipulate the DOM:
-const btn = document.querySelector("#save");
-const items = document.querySelectorAll(".item");   // NodeList
-btn.textContent = "Save";
-btn.classList.add("active");
-btn.setAttribute("disabled", "");
+// By id (fastest, returns the single element or null):
+const form = document.getElementById("login");
 
-// Events:
+// querySelector returns the FIRST match (or null); takes any CSS selector:
+const saveBtn = document.querySelector("#save");          // id selector
+const firstItem = document.querySelector(".item");        // class selector
+const nestedLink = document.querySelector("nav ul li a"); // descendant selector
+const checked = document.querySelector("input[type=checkbox]:checked");
+
+// querySelectorAll returns a STATIC NodeList of ALL matches:
+const items = document.querySelectorAll(".item");
+items.forEach(el => console.log(el.textContent));         // NodeList has forEach
+const itemsArray = [...items];                            // spread to a real array for map/filter
+
+// You can also search WITHIN an element, not just the whole document:
+const linksInNav = document.querySelector("nav").querySelectorAll("a");
+```
+
+> **Live vs static collections:** `getElementsByClassName`/`getElementsByTagName` return *live* `HTMLCollection`s that auto-update as the DOM changes (and lack `forEach`). `querySelectorAll` returns a *static* `NodeList` — a snapshot. Prefer `querySelector`/`querySelectorAll` for predictability. Always handle the `null` case — `querySelector` returns `null` if nothing matches, and `null.textContent` throws.
+
+### 16.2 Reading & changing content
+
+Once you have an element, you read or write its content. The key choice is **`textContent` vs `innerHTML`**:
+
+```js
+const el = document.querySelector("#message");
+
+// textContent — plain text. SAFE: never interprets HTML. Use this by default.
+el.textContent = "Hello & welcome <b>";   // shows the literal characters, no bold
+
+// innerHTML — parses the string AS HTML and builds nodes from it.
+el.innerHTML = "<strong>Hello</strong>";   // actually makes bold text
+// ⚠️ SECURITY (XSS): NEVER put untrusted/user input into innerHTML — it can inject
+// <script>/<img onerror> and run attacker code. Use textContent, or sanitize.
+
+console.log(el.textContent);   // read the text inside (and descendants)
+console.log(el.innerHTML);     // read the HTML markup inside
+```
+
+### 16.3 Attributes, properties, classes & styles
+
+HTML *attributes* (what's in the markup) and DOM *properties* (live values on the object) are related but not identical. For standard things, prefer the property; for custom/`data-*` use the attribute methods.
+
+```js
+const img = document.querySelector("img");
+
+// Attributes (string-based, mirror the HTML):
+img.getAttribute("src");
+img.setAttribute("alt", "A cat");
+img.hasAttribute("loading");
+img.removeAttribute("hidden");
+
+// Properties (typed, live) — often more convenient:
+img.src = "/cat.png";          // same as setAttribute("src", ...) but absolute URL when read
+const box = document.querySelector("input");
+box.value = "typed text";      // form value (NOT reflected as an attribute)
+box.disabled = true;           // boolean property
+
+// data-* attributes via the dataset object:
+// <div data-user-id="42"> -> el.dataset.userId === "42"
+const card = document.querySelector(".card");
+console.log(card.dataset.userId);
+card.dataset.state = "open";   // sets data-state="open"
+
+// classList — the right way to manage classes:
+el.classList.add("active");
+el.classList.remove("hidden");
+el.classList.toggle("open");           // add if absent, remove if present
+el.classList.toggle("open", isOpen);   // force on/off based on a boolean
+console.log(el.classList.contains("active"));
+
+// Inline styles (camelCase property names; values are strings):
+el.style.color = "red";
+el.style.backgroundColor = "#eee";     // CSS background-color
+el.style.display = "none";
+// For anything non-trivial, toggle a CLASS and keep the CSS in a stylesheet —
+// it's cleaner and keeps style concerns out of JS.
+```
+
+### 16.4 Traversing the tree
+
+From any node you can move to its relatives — useful when you have one element and need a nearby one.
+
+```js
+const li = document.querySelector("li");
+li.parentElement;          // the containing element (e.g. the <ul>)
+li.children;               // HTMLCollection of child ELEMENTS
+li.firstElementChild;      // first child element
+li.lastElementChild;
+li.nextElementSibling;     // the next <li>
+li.previousElementSibling;
+li.closest(".list");       // nearest ANCESTOR (or self) matching a selector — very handy
+li.matches(".item");       // does this element match the selector? -> boolean
+// (The "...Element..." variants skip text/whitespace nodes; the older
+//  parentNode/childNodes/nextSibling include text nodes too.)
+```
+
+### 16.5 Creating, inserting & removing nodes
+
+To build UI dynamically, create elements, configure them, then attach them to the tree.
+
+```js
+// Create and configure:
+const li = document.createElement("li");
+li.textContent = "New task";
+li.className = "item";
+li.dataset.id = "7";
+
+const list = document.querySelector("#tasks");
+
+// Insert (modern methods accept multiple nodes/strings):
+list.append(li);            // add as LAST child
+list.prepend(li);           // add as FIRST child
+li.before(otherNode);       // insert as a previous sibling
+li.after(otherNode);        // insert as a next sibling
+li.replaceWith(newNode);    // swap it out
+
+// Remove:
+li.remove();                // delete this element
+
+// Building many nodes efficiently with a DocumentFragment (one reflow, not N):
+const frag = document.createDocumentFragment();
+for (const name of ["a", "b", "c"]) {
+  const item = document.createElement("li");
+  item.textContent = name;
+  frag.append(item);
+}
+list.append(frag);          // single insertion -> better performance
+```
+
+> **Performance note:** each DOM mutation can trigger layout ("reflow"). Batch inserts with a `DocumentFragment`, or build an HTML string and set `innerHTML` once (for trusted content), rather than appending in a tight loop.
+
+### 16.6 Events — reacting to the user
+
+Events are how the page responds to clicks, typing, scrolling, page load, etc. You register a **listener** (callback) with `addEventListener(type, handler)`; the browser calls it with an **event object**.
+
+```js
+const btn = document.querySelector("#save");
+
 btn.addEventListener("click", (event) => {
-  event.preventDefault();
-  console.log("clicked", event.target);
+  console.log("clicked!", event.type);
+  console.log(event.target);        // the element that was clicked
+  console.log(event.currentTarget); // the element the listener is attached to
+  event.preventDefault();           // cancel default behavior (e.g. form submit, link nav)
 });
 
-// Create & insert:
-const li = document.createElement("li");
-li.textContent = "new";
-document.querySelector("ul")?.append(li);
+// Common event types:
+//   Mouse: click, dblclick, mousedown/up, mousemove, mouseenter/leave
+//   Keyboard: keydown, keyup  (event.key === "Enter", event.ctrlKey, ...)
+//   Form: submit, input, change, focus, blur
+//   Window/document: DOMContentLoaded, load, resize, scroll
 
-// fetch (returns a promise):
-const res = await fetch("/api/data", {
+// Keyboard example:
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+  if (e.ctrlKey && e.key === "s") { e.preventDefault(); save(); }
+});
+
+// Remove a listener (must be the SAME function reference):
+function onScroll() { /* ... */ }
+window.addEventListener("scroll", onScroll);
+window.removeEventListener("scroll", onScroll);
+```
+
+**Bubbling & event delegation.** When you click an element, the event travels *up* the tree (bubbling): the target fires first, then its parent, then grandparent, etc. You can exploit this: attach **one** listener to a container and inspect `event.target` — instead of adding listeners to hundreds of children. This is **event delegation**, and it automatically covers elements added later.
+
+```js
+// Instead of a listener per <li>, one listener on the <ul>:
+document.querySelector("#tasks").addEventListener("click", (e) => {
+  const li = e.target.closest("li");      // find the clicked row, if any
+  if (!li) return;                        // clicked empty space -> ignore
+  if (e.target.matches(".delete")) {      // clicked a delete button inside the row
+    li.remove();
+  } else {
+    li.classList.toggle("done");
+  }
+});
+
+// event.stopPropagation() stops bubbling; preventDefault() stops the default action.
+// The third arg controls the CAPTURE phase (top-down) and options like { once: true }:
+el.addEventListener("click", handler, { once: true });   // auto-removed after first call
+```
+
+### 16.7 Forms & user input
+
+```js
+const form = document.querySelector("#signup");
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();                       // stop the browser navigating/reloading
+  // Read all fields at once with FormData:
+  const data = new FormData(form);
+  const values = Object.fromEntries(data);  // { email: "...", password: "..." }
+  console.log(values.email);
+
+  // Built-in validation:
+  if (!form.checkValidity()) {
+    form.reportValidity();                  // show native error bubbles
+    return;
+  }
+  submitToServer(values);
+});
+
+// React to typing live:
+const search = document.querySelector("#q");
+search.addEventListener("input", (e) => {
+  console.log("current value:", e.target.value);
+});
+```
+
+### 16.8 Running code at the right time
+
+Your script may run before the DOM exists. Either put `<script>` at the end of `<body>`, use `<script defer>`/`type="module"` (deferred automatically), or wait for the event:
+
+```js
+document.addEventListener("DOMContentLoaded", () => {
+  // The HTML is parsed and the DOM is ready (images may still be loading).
+  init();
+});
+window.addEventListener("load", () => {
+  // Everything (images, stylesheets) finished loading.
+});
+```
+
+### 16.9 Talking to a server: `fetch`
+
+`fetch` makes HTTP requests and returns a promise. Combine it with the DOM to load and render data.
+
+```js
+async function loadUsers() {
+  try {
+    const res = await fetch("/api/users", {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);   // fetch does NOT reject on 404/500
+    const users = await res.json();
+
+    const list = document.querySelector("#users");
+    list.innerHTML = "";                                  // clear
+    for (const u of users) {
+      const li = document.createElement("li");
+      li.textContent = u.name;                            // textContent = safe from XSS
+      list.append(li);
+    }
+  } catch (err) {
+    console.error("load failed:", err);
+  }
+}
+
+// POST JSON:
+await fetch("/api/users", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ a: 1 }),
+  body: JSON.stringify({ name: "Ada" }),
 });
-const data = await res.json();
-
-// Storage (string only — JSON-encode objects):
-localStorage.setItem("token", "abc");
-console.log(localStorage.getItem("token"));
-localStorage.removeItem("token");
 ```
+
+> **Gotcha:** `fetch` only rejects on *network* failure. A 404 or 500 still *resolves* — always check `res.ok` / `res.status` yourself.
+
+### 16.10 Browser storage
+
+```js
+// localStorage — persists across sessions; sessionStorage — cleared when the tab closes.
+// Both store STRINGS only, so JSON-encode objects.
+localStorage.setItem("theme", "dark");
+console.log(localStorage.getItem("theme"));     // "dark"
+localStorage.removeItem("theme");
+localStorage.clear();
+
+const prefs = { theme: "dark", lang: "en" };
+localStorage.setItem("prefs", JSON.stringify(prefs));
+const saved = JSON.parse(localStorage.getItem("prefs") ?? "{}");
+// For larger/structured/offline data, use IndexedDB (a built-in async database).
+```
+
+### 16.11 Other useful browser APIs (pointers)
+
+- **`history` / `location`** — read the URL (`location.href`, `location.search`), navigate (`location.assign`), or do SPA routing (`history.pushState`).
+- **`setTimeout` / `setInterval`** — schedule work; `requestAnimationFrame` for smooth animations.
+- **`navigator`** — info about the browser/device (geolocation, clipboard, online status).
+- **Web APIs** — `Canvas`/WebGL (graphics), Web Audio, WebSockets (live connections), Service Workers (offline/PWA), `IntersectionObserver` (lazy-load/scroll effects).
+
+For real apps you'll usually reach for a framework (React/Next.js, etc. — see their guides), but everything they do is built on these DOM and browser APIs.
 
 ---
 
