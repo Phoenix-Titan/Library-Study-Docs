@@ -221,7 +221,11 @@ function f() {
 
 ### 5.2 Closures **[I, fundamental]**
 
-A closure is a function that remembers the variables from where it was *defined*.
+**What it is.** A closure is the combination of a function *and* the variables it "remembers" from the scope where it was **defined** (not where it's called). When a function is created inside another function and references the outer function's variables, JavaScript keeps those variables alive for as long as the inner function exists — even after the outer function has returned.
+
+**Why it works this way.** Functions in JS are values that can be returned, stored, and passed around. If a returned function still refers to a local variable of its parent, that variable obviously can't be thrown away when the parent returns — so the engine keeps the variable on the heap, bound to that function. The set of variables a function "closes over" is fixed lexically (by where the code is written), which is why it's called *lexical* scope.
+
+**What it's used for.** Closures are how you get **private state** (data only accessible through the functions you return), **factory functions** (functions that build customized functions), and **callbacks that remember context** (event handlers, `setTimeout`, array methods). They're the foundation of the module pattern and much of functional JS.
 
 ```js
 function makeCounter() {
@@ -248,7 +252,16 @@ console.log(fns2.map(f => f()));  // [0, 1, 2]
 
 ## 6. `this`, call/apply/bind
 
-`this` depends on **how a function is called**, not where it's defined. **[I]**
+**The core rule.** In a regular function, `this` is decided **when and how the function is called**, not where it was written. The same function can have a different `this` on every call. This trips up everyone at first, so memorize the four binding rules, in priority order: **[I]**
+
+1. **`new` binding** — `new Foo()` makes `this` the brand-new object being constructed.
+2. **Explicit binding** — `fn.call(obj)`, `fn.apply(obj)`, or `fn.bind(obj)` force `this` to be `obj`.
+3. **Method (implicit) binding** — `obj.fn()` makes `this` the object left of the dot (`obj`).
+4. **Default binding** — a plain `fn()` call sets `this` to `undefined` in strict mode (or the global object in sloppy mode).
+
+**The big exception: arrow functions.** Arrow functions have **no `this` of their own**; they capture `this` lexically from the surrounding scope at definition time, and it can never be reassigned (not even by `call`/`bind`). That's exactly why arrows are the right choice for callbacks (event handlers, `setTimeout`, array methods) where you want to keep the outer `this` — and the wrong choice for object methods that need a dynamic `this`.
+
+**Why this design?** It lets one function be reused across many objects (the method borrows whatever object it's attached to), which is the basis of prototypes and classes (§8). The cost is the "detached method" footgun below.
 
 ```js
 const obj = {
@@ -329,7 +342,9 @@ const deep = structuredClone(user);
 
 ### 8.1 The prototype chain **[I]**
 
-Every object has an internal link to a **prototype** object; property lookups walk the chain.
+**What it is.** JavaScript doesn't have classes at its core (classes are a newer convenience). Its real inheritance mechanism is the **prototype**: every object has a hidden link to another object — its prototype. When you read a property, the engine looks on the object itself; if it's not there, it follows the link to the prototype, then *that* object's prototype, and so on up the **prototype chain** until it finds the property or reaches `null`.
+
+**Why it works this way / what it's for.** This lets many objects **share** behavior without each carrying its own copy. All arrays share the methods on `Array.prototype` (`map`, `filter`…); defining a method once on a prototype makes it available to every instance and saves memory. It also enables inheritance: put shared methods on a parent prototype and have child objects link to it. Writing a property always sets it on the *own* object (it never modifies the prototype), so instances can override inherited values.
 
 ```js
 const animal = { eats: true };
@@ -491,7 +506,11 @@ const o = { [ID]: 123 };
 
 ### 12.1 The event loop **[I, fundamental]**
 
-JS is single-threaded. Long work is offloaded (timers, I/O, fetch); when done, callbacks queue up. The loop runs the **call stack** to empty, drains the **microtask queue** (promises) fully, then takes one **macrotask** (timer/IO), and repeats.
+**The problem it solves.** JavaScript runs on a **single thread** — one call stack, one thing at a time. If a network request blocked that thread, the whole page (or server) would freeze until it returned. The solution is to be *asynchronous*: slow operations (timers, network `fetch`, file I/O) are handed off to the environment (the browser or Node), which runs them elsewhere and hands back a **callback** to run when they finish.
+
+**How the loop works.** Finished callbacks don't interrupt running code — they wait in queues. The **event loop** is the simple rule that schedules them: run the current synchronous code until the **call stack** is empty; then completely drain the **microtask queue** (resolved promise continuations — `.then` callbacks and code after `await`); then take **one** task from the **macrotask queue** (a timer callback, an I/O event); then drain microtasks again; repeat forever.
+
+**Why the ordering matters.** Because microtasks are *fully* drained before the next macrotask, a promise always resolves before a `setTimeout(…, 0)` queued at the same moment. Understanding this explains otherwise-baffling output and timing bugs. The other practical lesson: a long synchronous computation blocks the loop — nothing else runs until it finishes — so keep synchronous work short.
 
 ```js
 console.log("1");
