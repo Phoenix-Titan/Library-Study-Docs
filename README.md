@@ -8,6 +8,23 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 
 ## 🗂️ The Guides (`library/`)
 
+### Programming Languages (beginner → advanced)
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Python](library/PYTHON_GUIDE.md) | 3.13/3.14: syntax, data structures, control flow & `match`, functions/closures, OOP & dataclasses, modules, exceptions, generators/context managers, decorators, type hints, **File System/OS/`subprocess`/CLIs**, concurrency (threads/multiprocessing/asyncio + GIL), stdlib, pytest, packaging | 1457 |
+| [JavaScript](library/JAVASCRIPT_GUIDE.md) | ES2024/25: types & coercion, modern syntax, functions, scope/closures, `this`, objects, prototypes & classes, arrays, async (event loop/promises/await), modules, **a detailed DOM & browser-APIs section**, FS/OS via a runtime, metaprogramming | 1103 |
+| [Node.js](library/NODEJS_GUIDE.md) | 22/24 LTS: event loop, CJS vs ESM, npm, **File System / OS / `child_process`**, streams, events, core modules, building CLIs (`parseArgs`), workers/cluster, error handling & graceful shutdown, `node:test`, `node:sqlite` | 621 |
+| [Java](library/JAVA_GUIDE.md) | 21 & 25 LTS: JVM, syntax, OOP, records/sealed/pattern matching, generics, collections, streams & lambdas, exceptions, **`java.nio.file`/`ProcessBuilder`/OS info**, concurrency (incl. virtual threads), build tools, JUnit 5 | 2461 |
+| [Kotlin](library/KOTLIN_GUIDE.md) | 2.x/K2: null safety, functions & extensions, scope functions, OOP, data/sealed/value classes, generics & variance, collections, coroutines & Flow, **File System/OS/`ProcessBuilder`**, delegation/DSLs, Java interop | 2597 |
+| [Go — Language & Production Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) | Go language beginner→advanced (slices, interfaces, errors, generics, concurrency) **plus** production design patterns — clean/hexagonal architecture, **repository, factory, adapter, DI, strategy/functional options, middleware** — with a complete Gin example + testing | 3054 |
+| [Rust](library/RUST_GUIDE.md) | 2024 edition: **ownership/borrowing/lifetimes** explained patiently, structs/enums/`Option`/`Result`, traits & generics, collections & iterators, smart pointers, modules, concurrency & async/tokio, **`std::fs`/`std::process`/OS**, macros, testing | 2529 |
+
+### Web Fundamentals
+| Guide | What it covers | Lines |
+|---|---|---|
+| [HTML & HTML5](library/HTML_GUIDE.md) | Document structure, semantics, text/links/media, responsive images, tables, **forms (deep)**, metadata/SEO, accessibility/ARIA, `dialog`/`popover`/`details`, web-components basics, HTML5 API pointers | 2255 |
+| [CSS & CSS3](library/CSS_GUIDE.md) | Selectors, **cascade/specificity/inheritance**, box model, units & custom properties, color (`oklch`), typography, **flexbox & grid (deep)**, positioning, responsive design & **container queries**, transitions/animations, nesting/`:has()`/`@layer`, BEM, a11y | 2225 |
+
 ### Frontend — React Ecosystem
 | Guide | What it covers | Lines |
 |---|---|---|
@@ -25,6 +42,7 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | Guide | What it covers | Lines |
 |---|---|---|
 | [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md) | Expo Router, core components, SDK device APIs, EAS Build/Submit/Update, animations, shipping to stores | 2791 |
+| [Android (Android Studio, Kotlin)](library/ANDROID_STUDIO_GUIDE.md) | **Project/folder structure** & the **Layout Editor**, Gradle/version catalogs, activity lifecycle & intents, **Jetpack Compose** + state, MVVM/ViewModel/StateFlow/Hilt, RecyclerView vs LazyColumn, Room/DataStore, Retrofit, coroutines/Flow, permissions, navigation, debugging/profiling, signing/publishing | 2320 |
 
 ### Backend — Node.js
 | Guide | What it covers | Lines |
@@ -38,6 +56,9 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 |---|---|---|
 | [PostgreSQL (beginner→advanced)](library/POSTGRESQL_GUIDE.md) | PG 17: data types, DDL/DML, joins, CTEs & window functions, JSONB, indexing, `EXPLAIN ANALYZE`, transactions/MVCC, PL/pgSQL & triggers, partitioning, RLS, extensions (pgvector), `pg`/`pgx` clients | 2640 |
 | [Redis](library/REDIS_GUIDE.md) | Redis 7/8: all data types, Streams, pub/sub, transactions & Lua, persistence, caching patterns, eviction, distributed locks & rate limiting, Sentinel/Cluster, ACLs/TLS, vector search, `redis-cli`/`ioredis`/`go-redis` | 2314 |
+| [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) | Relational model, keys, **ER modeling**, relationships, **normalization (1NF–BCNF) & denormalization**, indexing for design, **advanced schema patterns** (trees, polymorphic, multi-tenancy, versioning, soft deletes), a worked e-commerce schema consumed from **NestJS+Prisma and Gin+pgx**, migrations & scaling | 2110 |
+| [MongoDB & Document Design](library/MONGODB_GUIDE.md) | MongoDB 8: document model, CRUD, **embedding vs referencing**, **schema design patterns** (bucket/outlier/computed/subset/tree), indexing (ESR), the **aggregation pipeline**, validation, transactions, replication/sharding, **Node (native + Mongoose) & Go (mongo-go-driver)**, vector search | 2201 |
+| [SQLite3](library/SQLITE3_GUIDE.md) | Embedded/serverless architecture, **type affinity** & STRICT tables, CRUD/CTEs/window functions, indexing, FK enforcement, transactions & **WAL**, key PRAGMAs, JSON1, FTS5, **Node (better-sqlite3, `node:sqlite`) & Go (modernc/mattn)**, tuning & ops | 2203 |
 
 ### Backend — Go
 | Guide | What it covers | Lines |
@@ -75,29 +96,32 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 
 Pick the track that matches your goal. Within a track, follow the order listed.
 
-**① Frontend (React ecosystem)**
-1. [React 19](library/REACT_19_GUIDE.md) → 2. [Tailwind](library/TAILWIND_CHEATSHEET.md) → 3. [Next.js 16](library/NEXTJS_16_GUIDE.md) → 4. [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) → 5. [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) → 6. [Motion](library/MOTION_ANIMATION_GUIDE.md) → 7. [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) → 8. [Zustand](library/ZUSTAND_GUIDE.md) → 9. [Material UI](library/MATERIAL_UI_GUIDE.md)
+**① Foundations (a language + the web)**
+Learn a language top-to-bottom: [Python](library/PYTHON_GUIDE.md) · [JavaScript](library/JAVASCRIPT_GUIDE.md) + [Node.js](library/NODEJS_GUIDE.md) · [Java](library/JAVA_GUIDE.md) · [Kotlin](library/KOTLIN_GUIDE.md) · [Go](library/GO_LANG_AND_PATTERNS_GUIDE.md) · [Rust](library/RUST_GUIDE.md). For the web, do [HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) (incl. its DOM section).
 
-**② Full-stack with Node**
-[Next.js 16](library/NEXTJS_16_GUIDE.md) → [Fastify](library/FASTIFY_GUIDE.md) / [NestJS](library/NESTJS_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
+**② Frontend (React ecosystem)**
+[HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) → 1. [React 19](library/REACT_19_GUIDE.md) → 2. [Tailwind](library/TAILWIND_CHEATSHEET.md) → 3. [Next.js 16](library/NEXTJS_16_GUIDE.md) → 4. [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) → 5. [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) → 6. [Motion](library/MOTION_ANIMATION_GUIDE.md) → 7. [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) → 8. [Zustand](library/ZUSTAND_GUIDE.md) → 9. [Material UI](library/MATERIAL_UI_GUIDE.md)
 
-**③ Backend with Go**
-[Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) → [Gin + uploads](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) → [JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [ent ORM](library/GO_ENT_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) → [gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) → [File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
+**③ Full-stack with Node**
+[JavaScript](library/JAVASCRIPT_GUIDE.md) → [Node.js](library/NODEJS_GUIDE.md) → [Next.js 16](library/NEXTJS_16_GUIDE.md) → [Fastify](library/FASTIFY_GUIDE.md) / [NestJS](library/NESTJS_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
 
-**④ Data layer (databases & caching)**
-[PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) (Node) / [ent ORM](library/GO_ENT_ORM_GUIDE.md) (Go) → [Redis](library/REDIS_GUIDE.md)
+**④ Backend with Go**
+[Go — Language & Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) → [Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) → [Gin + uploads](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) → [JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [ent ORM](library/GO_ENT_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) → [gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) → [File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
 
-**⑤ Auth & backend platforms**
+**⑤ Data layer & database design**
+[Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) (Node) / [ent ORM](library/GO_ENT_ORM_GUIDE.md) (Go) → [SQLite3](library/SQLITE3_GUIDE.md) (embedded/local) → [MongoDB](library/MONGODB_GUIDE.md) (document) → [Redis](library/REDIS_GUIDE.md) (cache/KV)
+
+**⑥ Auth & backend platforms**
 [Better Auth](library/BETTERAUTH_GUIDE.md) (own your data: Next.js front + Go API) — or — [Supabase](library/SUPABASE_GUIDE.md) (managed Postgres + auth/realtime/storage, Next.js + Go). Pair either with [PostgreSQL](library/POSTGRESQL_GUIDE.md).
 
-**⑥ Mobile**
-[React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md)
+**⑦ Mobile**
+Cross-platform: [React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md). Native Android: [Kotlin](library/KOTLIN_GUIDE.md) → [Android (Android Studio)](library/ANDROID_STUDIO_GUIDE.md).
 
-**⑦ Shells & scripting (automation)**
+**⑧ Shells & scripting (automation)**
 [Bash](library/BASH_SCRIPTING_GUIDE.md) (Linux/macOS/CI/Git Bash) · [PowerShell](library/POWERSHELL_GUIDE.md) (modern Windows + cross-platform automation) · [Windows CMD & Batch](library/WINDOWS_CMD_BATCH_GUIDE.md) (legacy/`.bat`, still everywhere). On Windows, learn PowerShell for new work and CMD for reading existing scripts.
 
-**⑧ Specialized**
-[Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) — service-to-service APIs · [Go File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) — tooling & scripts · [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — file-transfer services.
+**⑨ Specialized**
+[Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) — service-to-service APIs · [Go File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) — tooling & scripts · [Rust](library/RUST_GUIDE.md) — systems/performance · [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — file-transfer services.
 
 ---
 
