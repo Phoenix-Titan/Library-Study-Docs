@@ -1673,28 +1673,33 @@ Get-Command -Module MyTools
 PowerShell Remoting runs commands on other machines (over WinRM by default; SSH-based remoting also exists, especially cross-platform in 7).
 
 ```powershell
+# Put target hosts in variables rather than hardcoding them inline (cleaner,
+# and it's how you'd really write it — from a param, config, or inventory file):
+$Computer  = 'Server01'
+$Computers = 'Server01', 'Server02', 'Server03'
+
 # One-off command on a remote machine:
-Invoke-Command -ComputerName Server01 -ScriptBlock { Get-Service spooler }
+Invoke-Command -ComputerName $Computer -ScriptBlock { Get-Service spooler }
 
 # Fan out to MANY machines at once (runs in parallel across them):
-Invoke-Command -ComputerName Server01, Server02, Server03 -ScriptBlock {
+Invoke-Command -ComputerName $Computers -ScriptBlock {
     [PSCustomObject]@{ Host = $env:COMPUTERNAME; Free = (Get-PSDrive C).Free }
 }
 
 # Pass LOCAL variables into the remote block with $using:
 $threshold = 100MB
-Invoke-Command -ComputerName Server01 -ScriptBlock {
+Invoke-Command -ComputerName $Computer -ScriptBlock {
     Get-Process | Where-Object WorkingSet -gt $using:threshold
 }
 
 # Persistent sessions (reuse state across calls):
-$s = New-PSSession -ComputerName Server01
+$s = New-PSSession -ComputerName $Computer
 Invoke-Command -Session $s -ScriptBlock { $x = 1 }
 Invoke-Command -Session $s -ScriptBlock { $x + 1 }   # 2 (state persisted)
 Remove-PSSession $s
 
 # Interactive remote shell:
-Enter-PSSession -ComputerName Server01      # your prompt is now on the remote box
+Enter-PSSession -ComputerName $Computer      # your prompt is now on the remote box
 Exit-PSSession                               # come back
 
 # SSH-based remoting (great cross-platform; 6+):
@@ -1776,8 +1781,9 @@ Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, TotalP
 Get-CimInstance Win32_Processor      | Select-Object Name, NumberOfCores, MaxClockSpeed
 Get-CimInstance Win32_BIOS           | Select-Object SerialNumber, SMBIOSBIOSVersion
 
-# Remote CIM:
-Get-CimInstance Win32_OperatingSystem -ComputerName Server01
+# Remote CIM (target host in a variable, not hardcoded inline):
+$Computer = 'Server01'
+Get-CimInstance Win32_OperatingSystem -ComputerName $Computer
 ```
 
 ### HTTP / REST with `Invoke-RestMethod` & `Invoke-WebRequest`
@@ -1860,7 +1866,8 @@ Unregister-ScheduledTask -TaskName 'NightlyBackup' -Confirm:$false
 $cred = Get-Credential
 $cred.UserName
 # $cred.Password is a SecureString (not plain text); pass it to cmdlets that accept -Credential:
-Invoke-Command -ComputerName Server01 -Credential $cred -ScriptBlock { whoami }
+$Computer = 'Server01'
+Invoke-Command -ComputerName $Computer -Credential $cred -ScriptBlock { whoami }
 
 # Save a credential ENCRYPTED to disk (DPAPI: only the SAME user on the SAME machine
 # can read it back — 5.1/Windows). Good for unattended scripts on one box:
