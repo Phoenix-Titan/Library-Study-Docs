@@ -32,11 +32,11 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | [React 19](library/REACT_19_GUIDE.md) | Core + all React 19 APIs (`use`, Actions, `useActionState`, `useOptimistic`, ref-as-prop, document metadata, Compiler), migration from 18 | 2686 |
 | [Next.js 16](library/NEXTJS_16_GUIDE.md) | App Router, Server/Client Components, rendering, caching, Server Actions, SEO, performance | 803 |
 | [TanStack Query v5](library/TANSTACK_QUERY_GUIDE.md) | Server-state: `useQuery`/`useMutation`, caching, invalidation, optimistic updates, Next.js hydration | 612 |
-| [Zustand](library/ZUSTAND_GUIDE.md) | Client state: stores, selectors, middleware (persist/immer/devtools), slices, Next.js SSR pattern | 1452 |
+| [Zustand](library/ZUSTAND_GUIDE.md) | Client state: stores, **selectors & why they matter for re-renders**, `useShallow`, set/get & immer updates, middleware (persist/immer/devtools/subscribeWithSelector), slices, state outside React, async actions, the **Next.js per-request SSR pattern**, testing | 1546 |
 | [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) | `useForm`/`register`, validation, `Controller`, zod resolvers, `useFieldArray`, shadcn + Next.js integration | 1889 |
 | [Motion (animation)](library/MOTION_ANIMATION_GUIDE.md) | `motion` components, transitions, gestures, variants, `AnimatePresence`, layout & scroll animations, Next.js usage | 2384 |
 | [Tailwind CSS (v4)](library/TAILWIND_CHEATSHEET.md) | Beginner-to-advanced guide: utility-first philosophy, v4 `@theme` setup, every core category, responsive/state variants (group/peer/has), dark mode, arbitrary values, `cn()`/CVA, plugins & framework integration | 1516 |
-| [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | Component-by-component reference, props, the Form pattern, theming | 677 |
+| [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | The **own-your-code philosophy** (Radix + Tailwind + CVA), CLI (`init`/`add`), component anatomy (CVA/`cn()`/forwardRef), theming & dark mode, component-by-component reference with key props, the **Form pattern (RHF + zod)**, building your own variants, a11y, Next.js integration | 1578 |
 | [Material UI (MUI)](library/MATERIAL_UI_GUIDE.md) | Theming, `sx`/`styled`, v6 Grid, component reference, DataGrid, Next.js setup, dark mode | 2365 |
 
 ### Mobile
