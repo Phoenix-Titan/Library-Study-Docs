@@ -35,7 +35,7 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | [Zustand](library/ZUSTAND_GUIDE.md) | Client state: stores, selectors, middleware (persist/immer/devtools), slices, Next.js SSR pattern | 1452 |
 | [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) | `useForm`/`register`, validation, `Controller`, zod resolvers, `useFieldArray`, shadcn + Next.js integration | 1889 |
 | [Motion (animation)](library/MOTION_ANIMATION_GUIDE.md) | `motion` components, transitions, gestures, variants, `AnimatePresence`, layout & scroll animations, Next.js usage | 2384 |
-| [Tailwind CSS (v4)](library/TAILWIND_CHEATSHEET.md) | Full utility cheatsheet, variants, arbitrary values, dark mode, common combos | 487 |
+| [Tailwind CSS (v4)](library/TAILWIND_CHEATSHEET.md) | Beginner-to-advanced guide: utility-first philosophy, v4 `@theme` setup, every core category, responsive/state variants (group/peer/has), dark mode, arbitrary values, `cn()`/CVA, plugins & framework integration | 1516 |
 | [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | Component-by-component reference, props, the Form pattern, theming | 677 |
 | [Material UI (MUI)](library/MATERIAL_UI_GUIDE.md) | Theming, `sx`/`styled`, v6 Grid, component reference, DataGrid, Next.js setup, dark mode | 2365 |
 
