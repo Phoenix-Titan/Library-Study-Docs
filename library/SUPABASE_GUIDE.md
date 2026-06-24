@@ -1,89 +1,102 @@
-# Supabase — Complete Offline Reference (with Next.js & Go)
+# Supabase (with Next.js & Go) — Beginner to Advanced — Complete Offline Reference
 
-> **Who this is for:** Full-stack developers who want one complete, internet-free reference for building real apps on **Supabase** — a Next.js front-end (App Router) and a Go back-end both talking to the *same* Supabase project. It covers the database, Row Level Security, Auth, the JavaScript client, Realtime, Storage, Edge Functions, migrations, pgvector, and — in unusual depth — how to wire Supabase into a Go service (direct Postgres via `pgx`, JWT verification, calling the REST/Storage APIs over HTTP, and respecting RLS).
-
-> **Version note:** This guide targets **Supabase as of 2026**. Key facts baked in:
-> - Backend is **PostgreSQL** (typically Postgres 15/16/17 depending on project age). Everything is "just Postgres" underneath.
-> - The Next.js integration uses the **`@supabase/ssr`** package. The older **`@supabase/auth-helpers-nextjs` is deprecated** — do **not** use it for new work; `@supabase/ssr` is the supported path.
-> - JavaScript client is **supabase-js v2** (`@supabase/supabase-js`).
-> - Local dev, migrations, and type generation use the **Supabase CLI** (`supabase` binary) over a Docker-based local stack.
-> - JWTs: legacy projects sign with a shared **HS256** secret; newer projects (2025+) support **asymmetric signing keys (RS256/ES256) exposed via JWKS** for verification without sharing a secret. Both are covered.
+> **Who this is for:** Full-stack developers going from "I have never touched Supabase" to "I can architect, secure, and ship a production app on it" — entirely offline. The unusual angle of this guide is that it covers **two clients against the same project at once**: a Next.js front-end (App Router) using the JavaScript client, *and* a Go back-end talking directly to Postgres and verifying Supabase's auth tokens. Every concept is explained in **prose first** — what it is, the logic/why it was designed that way, what it's for and when to reach for it, how to use it, the key options and parameters, best practices, and the **security implications** — and only then shown as heavily-commented, runnable code. Read top-to-bottom the first time; afterward use the Table of Contents as a lookup. Sections carry **[B]** beginner, **[I]** intermediate, **[A]** advanced tags.
 >
-> Supabase moves fast. Where a detail is especially likely to drift, it's flagged with **⚡ Version note**. For exact, current API shapes always confirm against the official docs — but the *concepts* here are stable.
+> **Version note:** This guide targets **Supabase as of 2026**. Key facts baked in:
+> - The backend is **PostgreSQL** (Postgres 15/16/17 depending on project age). Everything is "just Postgres" underneath — the deep relational material lives in **`POSTGRESQL_GUIDE.md`** and **`RELATIONAL_DB_DESIGN_GUIDE.md`**; this guide assumes you'll lean on those for SQL/modeling depth and focuses on what is *Supabase-specific*.
+> - The Next.js integration uses the **`@supabase/ssr`** package. The older **`@supabase/auth-helpers-nextjs` is deprecated** — do **not** use it for new work. (See **`NEXTJS_16_GUIDE.md`** for the App Router model these patterns build on.)
+> - The JavaScript client is **supabase-js v2** (`@supabase/supabase-js`).
+> - Local dev, migrations, and type generation use the **Supabase CLI** over a Docker-based local stack.
+> - JWTs: legacy projects sign with a shared **HS256** secret; newer projects (2025+) support **asymmetric signing keys (RS256/ES256) exposed via JWKS**. Both are covered.
+>
+> Supabase moves fast. Where a detail is especially likely to drift it is flagged with **⚡ Version note**. Confirm exact API shapes against the official docs, but the *concepts* here are stable. (Go code blocks use **tabs** for indentation, per Go convention.)
 
 ---
 
 ## Table of Contents
 
-1. [What Supabase Is & When to Use It](#1-what-supabase-is--when-to-use-it)
-2. [Getting Started: Project, Keys, CLI, Local Dev](#2-getting-started-project-keys-cli-local-dev)
-3. [The Database & Row Level Security (RLS)](#3-the-database--row-level-security-rls)
-4. [supabase-js Client Deep Dive](#4-supabase-js-client-deep-dive)
-5. [Auth (GoTrue)](#5-auth-gotrue)
-6. [Next.js Integration (App Router) with @supabase/ssr](#6-nextjs-integration-app-router-with-supabasessr)
-7. [Realtime](#7-realtime)
-8. [Storage](#8-storage)
-9. [Edge Functions (Deno)](#9-edge-functions-deno)
-10. [Database Migrations & Generated Types](#10-database-migrations--generated-types)
-11. [Golang Integration (Direct DB, JWT, REST, RLS)](#11-golang-integration-direct-db-jwt-rest-rls)
-12. [pgvector / AI: Embeddings & Semantic Search](#12-pgvector--ai-embeddings--semantic-search)
-13. [Security Best Practices](#13-security-best-practices)
-14. [Self-Hosting & Pricing/Limits Awareness](#14-self-hosting--pricinglimits-awareness)
-15. [Gotchas & Best Practices](#15-gotchas--best-practices)
+1. [What Supabase Is & When to Use It](#1-what-supabase-is--when-to-use-it) **[B]**
+2. [Getting Started: Project, Keys, CLI, Local Dev](#2-getting-started-project-keys-cli-local-dev) **[B]**
+3. [The Database & Row Level Security (RLS)](#3-the-database--row-level-security-rls) **[B/I/A]**
+4. [supabase-js Client Deep Dive](#4-supabase-js-client-deep-dive) **[B/I]**
+5. [Auth (GoTrue)](#5-auth-gotrue) **[B/I]**
+6. [Next.js Integration (App Router) with @supabase/ssr](#6-nextjs-integration-app-router-with-supabasessr) **[I/A]**
+7. [Realtime](#7-realtime) **[I]**
+8. [Storage](#8-storage) **[I]**
+9. [Edge Functions (Deno)](#9-edge-functions-deno) **[I]**
+10. [Database Migrations & Generated Types](#10-database-migrations--generated-types) **[I]**
+11. [Golang Integration (Direct DB, JWT, REST, RLS)](#11-golang-integration-direct-db-jwt-rest-rls) **[A]**
+12. [pgvector / AI: Embeddings & Semantic Search](#12-pgvector--ai-embeddings--semantic-search) **[A]**
+13. [Security Best Practices](#13-security-best-practices) **[I/A]**
+14. [Self-Hosting & Pricing/Limits Awareness](#14-self-hosting--pricinglimits-awareness) **[I]**
+15. [Gotchas & Best Practices](#15-gotchas--best-practices) **[A]**
 16. [Study Path & Build-to-Learn Projects](#16-study-path--build-to-learn-projects)
 
 ---
 
 ## 1. What Supabase Is & When to Use It
 
-Supabase is an **open-source Firebase alternative built on PostgreSQL**. Instead of a proprietary NoSQL store, you get a real relational SQL database plus a suite of services bolted around it that turn the database into a complete backend. The defining idea: **everything is Postgres**, and the extra services are thin layers that read/write that Postgres.
+### 1.1 The one-sentence definition **[B]**
 
-### The pieces
+Supabase is an **open-source Firebase alternative built on PostgreSQL**: a managed Postgres database wrapped in a suite of services — Auth, an auto-generated REST API, Realtime, Storage, and Edge Functions — that together turn the database into a complete backend you can talk to directly from a browser.
+
+The reason that sentence matters is the contrast it draws. Firebase made backend-less apps popular, but its datastore is a proprietary NoSQL document store: no joins, no transactions across documents, no SQL, weak constraints, and vendor lock-in. Supabase keeps the developer experience Firebase pioneered — *the frontend talks to the backend directly, no API tier to hand-write* — but puts a **real relational SQL database** underneath it. You get joins, foreign keys, transactions, check constraints, views, triggers, and the entire Postgres extension ecosystem, and your data is a standard Postgres dump you can take anywhere.
+
+### 1.2 The core mental model: the database is the security boundary **[B]**
+
+This is the single most important idea in the whole product, so internalize it before anything else. In a traditional app, a hand-written backend sits between the client and the database and enforces "who can do what." Supabase mostly **removes that middle tier**: the browser holds a public API key and talks to Postgres (through a thin REST layer). That sounds insane — how is it not wide open? — and the answer is the defining design decision of Supabase:
+
+**Authorization is enforced *inside the database itself*, per-row, by PostgreSQL's Row Level Security (RLS).** Auth issues a signed JWT carrying the user's id; every access path (the REST API, Realtime, Storage) forwards that JWT into Postgres; and RLS policies — rules you write once in SQL — decide which rows that user may select, insert, update, or delete. Write your security rules *once*, and **every** client (JS, Go, mobile, a raw HTTP call) is governed by them identically. This is why understanding RLS (§3) is non-negotiable: it *is* your backend's security.
+
+### 1.3 The pieces **[B]**
 
 | Service | What it is | Underlying tech |
 |---|---|---|
 | **Database** | A full PostgreSQL instance you own — tables, SQL, extensions, functions, triggers. | PostgreSQL |
-| **Auth** | User sign-up/sign-in, sessions, OAuth, magic links, MFA. Issues JWTs. | **GoTrue** (a Go auth server, ironically) |
+| **Auth** | User sign-up/sign-in, sessions, OAuth, magic links, MFA. Issues JWTs. | **GoTrue** (a Go auth server, fittingly) |
 | **Auto REST API** | Every table/view is instantly a RESTful endpoint with filtering, joins, pagination. | **PostgREST** |
-| **Realtime** | Subscribe to DB changes (insert/update/delete), broadcast messages, presence. | Elixir/Phoenix `Realtime` server + Postgres logical replication |
-| **Storage** | S3-style object storage for files, with access controlled by Postgres RLS. | Storage API (backed by S3-compatible store + a `storage` schema in Postgres) |
+| **Realtime** | Subscribe to DB changes (insert/update/delete), broadcast messages, presence. | Elixir/Phoenix server + Postgres logical replication |
+| **Storage** | S3-style object storage for files, access controlled by the *same* Postgres RLS. | Storage API + a `storage` schema in Postgres |
 | **Edge Functions** | Serverless TypeScript/JavaScript functions at the edge. | **Deno** runtime |
 | **Vector** | Store and similarity-search embeddings for AI/semantic search. | **pgvector** Postgres extension |
 
-The big mental model: **the database is the source of truth and the security boundary.** Auth issues a JWT carrying the user's id; PostgREST, Realtime, and Storage all forward that JWT into Postgres, where **Row Level Security policies** decide what the user can see and do. You write your authorization rules *once*, in SQL, and every access path enforces them.
+Notice the pattern: each service is a thin layer over Postgres, and each one routes authorization back through RLS. There is one source of truth (the database) and one security model (RLS). That coherence is the product.
 
-### When to use it
+### 1.4 When to use it — and when not to **[B]**
 
 **Reach for Supabase when:**
-- You want a real SQL database with relations, transactions, and constraints (not document soup).
-- You want auth, storage, and realtime without standing up three separate services.
-- You're building a SaaS, dashboard, social app, marketplace, internal tool, or any CRUD-heavy product.
-- You value **not being locked in** — it's open source and self-hostable; your data is a standard Postgres dump.
-- You want to ship a frontend-only MVP fast (the JS client + RLS can replace a whole backend tier), but keep the door open to add a custom backend (e.g. in Go) later, against the same database.
+- You want a real SQL database with relations, transactions, and constraints (not document soup), but don't want to hand-build auth, storage, and realtime as three separate services.
+- You're building a SaaS, dashboard, social app, marketplace, internal tool, or any CRUD-heavy product — the bread-and-butter case.
+- You value **not being locked in** — it's open source and self-hostable, and your data is a standard Postgres dump.
+- You want to ship a frontend-only MVP fast (the JS client + RLS can replace an entire backend tier) yet keep the door open to add a custom backend (e.g. in Go) later, against the *same* database.
 
 **Be cautious / consider alternatives when:**
-- You need a globally-distributed multi-master write database (Supabase is single-primary Postgres + read replicas).
-- Your workload is extreme write throughput / append-only telemetry at huge scale — a purpose-built store may fit better.
-- You're allergic to SQL and don't want to learn RLS (you'll fight the security model otherwise).
+- You need a globally-distributed multi-master *write* database. Supabase is single-primary Postgres (plus read replicas). Writes go to one region.
+- Your workload is extreme write throughput or append-only telemetry at massive scale — a purpose-built store (ClickHouse, Cassandra, a time-series DB) may fit better.
+- You refuse to learn SQL and RLS. You will fight the security model the entire way; the product's value *is* in embracing Postgres.
 
-> The sweet spot: **Supabase as your Postgres + auth + storage backbone**, accessed directly from a Next.js app via the JS client *and* from a Go service via `pgx`/HTTP, all sharing one authorization model.
+> **The sweet spot:** Supabase as your Postgres + Auth + Storage backbone, accessed directly from Next.js via the JS client *and* from a Go service via `pgx`/HTTP, all sharing one authorization model. That hybrid is the architecture this guide builds toward.
 
 ---
 
 ## 2. Getting Started: Project, Keys, CLI, Local Dev
 
-### 2.1 Create a project (hosted)
+### 2.1 Create a project (hosted) **[B]**
 
-1. Sign in at the Supabase dashboard and create an **organization**, then a **project**.
-2. Choose a **region** close to your users (latency matters; it's fixed after creation).
-3. Set a **database password** — this is the password for the `postgres` superuser-ish role used in connection strings. Store it in a password manager; you'll need it for direct DB access from Go.
+A "project" in Supabase is one isolated Postgres database plus its bundled services, with its own URL and keys. To create one:
+
+1. Sign in at the Supabase dashboard and create an **organization**, then a **project** inside it.
+2. Choose a **region** close to your users. Latency to the database is dominated by physical distance, and the region is **fixed after creation** — picking wrong means recreating the project. Choose deliberately.
+3. Set a **database password**. This is the password for the `postgres` role used in direct connection strings (the ones your Go backend or migrations use). Store it in a password manager immediately — it is shown once and you need it for `pgx` access.
 4. Wait ~2 minutes for provisioning.
 
-### 2.2 The dashboard (what each section is)
+### 2.2 The dashboard — what each section is for **[B]**
+
+The dashboard is a Supabase-built UI (called **Studio**) over your project. Knowing where things live saves hours:
 
 | Section | Use |
 |---|---|
-| **Table Editor** | Spreadsheet-like view to create/edit tables and rows. |
+| **Table Editor** | Spreadsheet-like view to create/edit tables and rows. Fine for exploring; *don't* make production schema changes here untracked (use migrations — §10). |
 | **SQL Editor** | Run arbitrary SQL, save snippets, create policies/functions. Your power tool. |
 | **Authentication** | Manage users, providers (Google, GitHub…), email templates, MFA, URL config. |
 | **Storage** | Create buckets, browse files, set policies. |
@@ -92,23 +105,30 @@ The big mental model: **the database is the source of truth and the security bou
 | **Realtime** | Inspect channels and publication settings. |
 | **Project Settings → API** | Your **Project URL**, **anon key**, **service_role key**, JWT settings. |
 | **Project Settings → Database** | Connection strings (direct + pooler), pooler mode. |
+| **Advisors** | Security & Performance linters — flags RLS-disabled tables, missing indexes, exposed functions. Check these regularly. |
 
-### 2.3 Keys: `anon` vs `service_role` (the CRITICAL difference)
+### 2.3 Keys: `anon` vs `service_role` (the CRITICAL difference) **[B]**
 
-Every project ships two primary API keys, both JWTs signed by your project:
+This subsection is where most security incidents are born, so read it slowly. Every project ships two primary API keys. **Both are JWTs signed by your project**, and the *only* thing that distinguishes them is which Postgres role they map to — and therefore whether RLS applies.
 
 | Key | Role it maps to | Where it may live | RLS |
 |---|---|---|---|
-| **`anon`** (public/publishable) | Postgres role `anon` (or `authenticated` after login) | **Safe in the browser / client apps.** Exposed in your Next.js bundle. | **Subject to RLS.** This is the whole point — RLS protects you even though the key is public. |
-| **`service_role`** (secret) | Postgres role `service_role` | **SERVER ONLY. Never in a browser, never in a mobile app, never in a public repo, never in `NEXT_PUBLIC_*`.** | **BYPASSES RLS entirely.** It is effectively god-mode over your data. |
+| **`anon`** (public/publishable) | Postgres role `anon` (or `authenticated` after the user logs in) | **Safe in the browser / client apps.** It is *meant* to be shipped in your Next.js bundle. | **Subject to RLS.** This is the whole point — RLS protects you even though the key is public. |
+| **`service_role`** (secret) | Postgres role `service_role` | **SERVER ONLY. Never in a browser, never in a mobile app, never in a public repo, never in a `NEXT_PUBLIC_*` variable.** | **BYPASSES RLS entirely.** Effectively god-mode over all your data. |
 
-> **🚨 The single most important security rule in this guide:** the **`service_role` key bypasses Row Level Security**. If it leaks to a client, anyone can read and modify *all* data in *all* tables. Treat it like a database root password. It belongs only in trusted server environments (Go backend, Edge Functions, server-side Next.js secrets — and even there, prefer the anon key + user JWT when you can).
+Why is it safe to put the `anon` key in public JavaScript that anyone can read? Because the key only identifies *which project* and *which baseline role* — it does **not** grant access by itself. The moment a request hits Postgres, RLS decides per-row what is allowed. A logged-out visitor is the `anon` role; after login the JWT upgrades them to `authenticated` with their user id embedded. The key is a doorbell, not a master key.
 
-> **⚡ Version note:** Supabase has been migrating naming toward **publishable keys** (`sb_publishable_...`, replaces `anon`) and **secret keys** (`sb_secret_...`, replaces `service_role`) alongside the asymmetric JWT signing keys rollout. The *semantics* are identical: one public/RLS-respecting key, one secret/RLS-bypassing key. This guide uses the classic `anon`/`service_role` names since they remain widely valid and clearer to reason about.
+The `service_role` key is the opposite. It maps to a role that is configured to **skip RLS checks completely**, so any query it runs sees and can modify every row in every table.
 
-### 2.4 Connection strings
+> **🚨 The single most important security rule in this guide:** the **`service_role` key bypasses Row Level Security**. If it leaks to a client, anyone can read and modify *all* data in *all* tables. Treat it exactly like a database root password. It belongs only in trusted server environments (your Go backend, Edge Functions, server-only Next.js modules) — and even there, prefer the anon key + the user's JWT whenever you can, reaching for `service_role` only for genuinely privileged operations.
 
-From **Project Settings → Database** you get connection strings. Three flavors matter:
+> **⚡ Version note:** Supabase has been migrating naming toward **publishable keys** (`sb_publishable_...`, replaces `anon`) and **secret keys** (`sb_secret_...`, replaces `service_role`) alongside the asymmetric-JWT-signing-keys rollout. The *semantics* are identical: one public/RLS-respecting key, one secret/RLS-bypassing key. This guide uses the classic `anon`/`service_role` names since they remain valid and are clearer to reason about.
+
+### 2.4 Connection strings & the pooler **[I]**
+
+Beyond the REST API, you can connect to the Postgres database directly over the wire — that's how a Go server, migrations, or any standard Postgres tool talks to it. From **Project Settings → Database** you get connection strings in three flavors, and the difference is about **connection pooling**, which matters enormously for correctness and scale.
+
+The problem pooling solves: Postgres dedicates real resources to every open connection, so the number of *direct* connections is limited (often a few dozen). A serverless or high-traffic app can blow past that in seconds. **Supavisor** (Supabase's pooler, which replaced PgBouncer) sits in front and multiplexes many client connections onto a smaller set of real server connections.
 
 ```
 # 1) DIRECT connection (port 5432) — a real Postgres TCP connection to the primary.
@@ -117,38 +137,40 @@ From **Project Settings → Database** you get connection strings. Three flavors
 postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
 
 # 2) SUPAVISOR — SESSION mode (port 5432 via the pooler host).
-#    A connection pooler that keeps one server connection per client session.
-#    Behaves like a direct connection but lets more clients connect. Prepared statements OK.
+#    Keeps one server connection per client session. Behaves like a direct
+#    connection but lets more clients connect. Prepared statements OK.
 postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres
 
 # 3) SUPAVISOR — TRANSACTION mode (port 6543).
-#    Pooling per-transaction: a server connection is borrowed only for the duration of a
+#    Pools per-transaction: a server connection is borrowed only for the duration of a
 #    transaction, then returned. Ideal for serverless / many short-lived clients.
 #    ⚠️ Prepared statements & session state DON'T survive across transactions here.
 postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
 ```
 
-**Supavisor** is Supabase's connection pooler (it replaced PgBouncer). Pooler modes summarized:
-
 | Mode | Port | Best for | Caveat |
 |---|---|---|---|
 | **Direct** | 5432 | Single long-lived server, migrations | Few connections available (IPv6 by default on hosted) |
 | **Session** | 5432 (pooler host) | Persistent servers needing more connections + session features | Holds a connection per client |
-| **Transaction** | 6543 | Serverless, edge, high concurrency, short queries | **No prepared statement caching, no session-level state across queries** |
+| **Transaction** | 6543 | Serverless, edge, high concurrency, short queries | **No prepared-statement caching, no session-level state across queries** |
 
-> **⚡ Go + pooler gotcha (preview — full detail in §11):** `pgx` and `lib/pq` cache prepared statements by default. Against **transaction-mode** pooling this breaks (`prepared statement "stmtcache_..." already exists` / does not exist). Fix: disable statement caching (`pgx` simple protocol or `default_query_exec_mode = exec`) or append `?default_query_exec_mode=simple_protocol` / `statement_cache_mode=describe`. Use **session/direct** mode for a persistent Go server when you can.
+**How to choose:** a single persistent Go server → **session** (or direct) mode. A serverless function that spins up per-request → **transaction** mode. Migrations → **direct** (they need session features).
 
-### 2.5 The Supabase CLI & local development
+> **⚡ Go + pooler gotcha (preview — full detail in §11):** `pgx` and `lib/pq` cache prepared statements by default. Against **transaction-mode** pooling this breaks (`prepared statement "stmtcache_..." already exists`). Fix: disable statement caching (`pgx` simple protocol / `default_query_exec_mode=simple_protocol`) or use **session/direct** mode for a persistent server. This is the #1 surprise for Go developers.
 
-The CLI runs the **entire Supabase stack locally in Docker** — Postgres, GoTrue, PostgREST, Realtime, Storage, Studio — so you can develop offline and version-control your schema.
+### 2.5 The Supabase CLI & local development **[B]**
+
+Here is a feature that genuinely sets Supabase apart for offline and team work: the CLI runs the **entire Supabase stack locally in Docker** — Postgres, GoTrue, PostgREST, Realtime, Storage, and Studio — so you develop against a real, disposable copy of your backend with no internet and no risk to production. The same client code (only the URL/keys change) runs against local or hosted.
+
+**Why this matters:** you get version-controlled schema (migrations), reproducible environments for every teammate, and a safe place to test destructive changes. It transforms Supabase from "a website you click around in" into a proper engineering workflow.
 
 ```bash
 # Install (pick one)
-npm install -g supabase          # via npm
-brew install supabase/tap/supabase   # macOS
-scoop install supabase           # Windows (scoop bucket)
+npm install -g supabase               # via npm
+brew install supabase/tap/supabase    # macOS
+scoop install supabase                # Windows (scoop bucket)
 
-supabase --version               # verify
+supabase --version                    # verify
 
 # Initialize Supabase in your repo (creates ./supabase/ with config.toml, migrations/, etc.)
 supabase init
@@ -163,37 +185,29 @@ supabase start
 #   anon key:       eyJ...
 #   service_role:   eyJ...
 
-supabase status                  # show running services + keys again
-supabase stop                    # stop the stack (add --no-backup to discard local data)
+supabase status                       # show running services + keys again
+supabase stop                         # stop the stack (add --no-backup to discard local data)
 ```
 
-Local stack key facts:
+Local stack key facts to memorize:
 - Local **DB** is on port **54322** with user/password `postgres`/`postgres`.
 - Local **API** (PostgREST + GoTrue + Storage gateway) is on **54321**.
 - Local **Studio** (the dashboard) is on **54323**.
-- The local anon/service_role keys are **fixed dev keys** printed by `supabase start` — they are not secret (they only work locally), so they're fine to commit in `.env.local` for the team if you want.
+- The local anon/service_role keys are **fixed dev keys** printed by `supabase start`. They only work against your local stack, so they are *not* secret — committing them in `.env.local` for the team is fine.
 
-#### Linking local to a hosted project & pushing schema
+#### Linking local to a hosted project & pushing schema **[I]**
 
 ```bash
 supabase login                                  # authenticate the CLI to your account
 supabase link --project-ref [PROJECT-REF]       # connect this repo to a remote project
 
-# Pull the remote schema down into a migration (when the remote already has tables)
-supabase db pull
+supabase db pull                                # pull remote schema down into a migration
+supabase migration new create_profiles          # create a new empty migration to write SQL into
+supabase db reset                               # wipe LOCAL db & replay ALL migrations + seed.sql
+supabase db push                                # push local migrations UP to the linked remote
 
-# Create a new empty migration file to write SQL into
-supabase migration new create_profiles
-
-# Apply local migrations to the LOCAL db
-supabase db reset       # wipes local db & replays ALL migrations + seed.sql (great for clean state)
-
-# Push local migrations UP to the linked remote project
-supabase db push
-
-# Generate TypeScript types from the (local or remote) schema
+# Generate TypeScript types from the (local or remote) schema:
 supabase gen types typescript --local > src/types/database.types.ts
-# or from remote:
 supabase gen types typescript --project-id [PROJECT-REF] > src/types/database.types.ts
 ```
 
@@ -210,24 +224,31 @@ supabase/
     └── hello/index.ts
 ```
 
-> **Best practice:** treat `supabase/migrations/` as the canonical schema. Never click-create tables in production and forget them — make schema changes as migrations so they're reproducible and reviewable. (Full migration workflow in §10.)
+> **Best practice:** treat `supabase/migrations/` as the canonical schema. Never click-create tables in production and forget them — make schema changes as migrations so they're reproducible, reviewable, and rollback-friendly. (Full migration workflow in §10.)
 
 ---
 
 ## 3. The Database & Row Level Security (RLS)
 
-This is **the** section. RLS is the core security model of Supabase. If you internalize one thing, make it this.
+This is **the** section. RLS is the core security model of Supabase, and almost every "Supabase data leak" headline traces back to misunderstanding it. If you internalize one thing from this entire guide, make it this. (For the SQL fundamentals behind these examples — data types, constraints, indexes, joins — see `POSTGRESQL_GUIDE.md` and `RELATIONAL_DB_DESIGN_GUIDE.md`.)
 
-### 3.1 Why RLS exists here
+### 3.1 What RLS is and why it exists here **[B]**
 
-Because the **`anon` key is public** and the JS client talks to your database directly (via PostgREST), you cannot rely on "the client won't send bad requests." Anyone can open dev tools, grab the anon key, and call your API with arbitrary filters. **Row Level Security** is what stands between that and a data breach: Postgres itself decides, per-row, whether the current user may select/insert/update/delete.
+**Row Level Security** is a PostgreSQL feature (not a Supabase invention) that lets you attach SQL rules — *policies* — to a table that decide, *per row* and *per current user*, whether a SELECT/INSERT/UPDATE/DELETE is allowed. When RLS is enabled on a table, every query against it is silently rewritten to "…AND (the policy expression is true for this row)." Rows the user isn't allowed to see simply don't exist as far as their query is concerned.
 
-### 3.2 Enabling RLS
+**Why it is the linchpin of Supabase specifically:** because the `anon` key is *public* and the JS client talks to your database directly through PostgREST, you cannot rely on "the client won't send bad requests." Anyone can open dev tools, copy the anon key, and call your API with arbitrary filters — `select * from users` included. The only thing standing between that and a breach is RLS: Postgres itself, not your frontend, decides what each request may touch. In a hand-written backend, *you* are the gate. In Supabase, *the database* is the gate, and RLS is how you configure it.
 
-When you create a table in the dashboard, RLS is **enabled by default but with no policies** — which means **deny all** (no rows in or out via the anon/authenticated roles). For tables you create via SQL, you must enable it explicitly:
+### 3.2 Enabling RLS — and the deny-all default **[B]**
+
+There are two states that trip people up, so be precise:
+
+- **RLS disabled** = the table is **wide open** to whatever the role's table privileges allow. Via the public API that means the anon key can read/write everything. This is a breach.
+- **RLS enabled with no policies** = **deny all**. No rows go in or out for the `anon`/`authenticated` roles. This is *safe* — it just doesn't do anything yet. You then open access deliberately, one policy at a time.
+
+When you create a table through the dashboard, RLS is **enabled by default** (good). When you create one via raw SQL, you must enable it yourself — and forgetting to is the classic mistake.
 
 ```sql
--- A table of user profiles
+-- A table of user profiles, keyed to Supabase's built-in auth.users table.
 create table profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text unique,
@@ -235,13 +256,15 @@ create table profiles (
   created_at timestamptz not null default now()
 );
 
--- TURN ON RLS. Until you add policies, NO ONE (anon/authenticated) can read or write.
+-- TURN ON RLS. Until you add policies below, NO ONE (anon/authenticated) can read or write.
 alter table profiles enable row level security;
 ```
 
-> **🚨 Danger:** A table with RLS **disabled** is fully exposed through the public API — the anon key can do anything Postgres permissions allow. **Never disable RLS on a table reachable via the API.** If you genuinely need a table to be server-only, keep RLS on with no policies (deny all) and access it solely through the `service_role` key or `security definer` functions.
+> **🚨 Danger:** A table with RLS **disabled** is fully exposed through the public API. **Never disable RLS on a table reachable via the API.** If you genuinely need a table to be server-only, keep RLS *on* with no policies (deny-all) and access it solely through the `service_role` key or `security definer` functions (§3.7).
 
-### 3.3 Anatomy of a policy
+### 3.3 Anatomy of a policy **[I]**
+
+A policy is a named rule scoped to a table, an operation, and a role, with up to two boolean expressions. Understanding the two expressions — `using` and `with check` — is the whole game.
 
 ```sql
 create policy "policy name"
@@ -249,13 +272,13 @@ create policy "policy name"
   as { permissive | restrictive }       -- default permissive (OR-combined). restrictive is AND-combined.
   for { all | select | insert | update | delete }
   to <role>                             -- e.g. authenticated, anon, public
-  using ( <expression> )                -- row visibility / which existing rows the op may touch
-  with check ( <expression> );          -- validation for NEW/updated rows (INSERT/UPDATE)
+  using ( <expression> )                -- row visibility: which EXISTING rows the op may touch
+  with check ( <expression> );          -- validation for NEW/updated row VALUES (INSERT/UPDATE)
 ```
 
-Two clauses, two jobs:
-- **`using`** — applied to *existing* rows. For SELECT/UPDATE/DELETE it filters which rows are visible/affected.
-- **`with check`** — applied to the *new* row's values on INSERT and UPDATE. It validates what you're trying to write.
+The two clauses do two distinct jobs, and conflating them causes subtle bugs:
+- **`using`** is checked against rows that *already exist*. For SELECT/UPDATE/DELETE it filters which rows are visible or affected. ("Which rows are you even allowed to look at / target?")
+- **`with check`** is checked against the *new values* you're trying to write on INSERT and UPDATE. ("Is the row you're about to create/leave-behind a legal one?") It prevents, for example, inserting a row owned by someone else, or *changing* a row's owner to someone else.
 
 | Operation | Uses `using`? | Uses `with check`? |
 |---|---|---|
@@ -264,17 +287,19 @@ Two clauses, two jobs:
 | UPDATE | ✅ (which rows) | ✅ (resulting values) |
 | DELETE | ✅ | — |
 
-### 3.4 The auth helper functions
+**Permissive vs restrictive:** by default policies are **permissive**, meaning multiple policies for the same operation are combined with **OR** — a row is allowed if *any* policy passes. This lets you layer policies ("owners can read their rows" OR "admins can read all rows"). **Restrictive** policies are combined with **AND** and act as mandatory gates that *every* access must pass (e.g. "and the user's email must be verified"). Use restrictive sparingly, for cross-cutting constraints.
 
-Inside a policy you have access to the current request's identity, injected from the JWT:
+### 3.4 The auth helper functions **[I]**
+
+Inside a policy you need to know *who is asking*. Supabase injects the current request's identity — extracted from the JWT that PostgREST forwarded — and exposes it through three SQL functions:
 
 ```sql
-auth.uid()    -- returns the user's UUID (the JWT 'sub' claim), or NULL if not logged in
-auth.jwt()    -- returns the full decoded JWT as jsonb (claims, app_metadata, user_metadata, role)
+auth.uid()    -- the user's UUID (the JWT 'sub' claim), or NULL if not logged in
+auth.jwt()    -- the full decoded JWT as jsonb (claims, app_metadata, user_metadata, role)
 auth.role()   -- 'anon' or 'authenticated' (the Postgres role for the request)
 ```
 
-Examples of reading claims:
+`auth.uid()` is the workhorse — it's how a policy says "this row belongs to the person asking." Reading custom claims out of the JWT lets you do role- and attribute-based rules:
 
 ```sql
 auth.uid()                                   -- current user id
@@ -283,14 +308,15 @@ auth.uid()                                   -- current user id
 (auth.jwt() #>> '{user_metadata,full_name}') -- nested user_metadata value
 ```
 
-> `app_metadata` is **set by the server only** (trusted — good for roles/permissions). `user_metadata` is **user-editable** (never trust it for authorization).
+> **🚨 Trust boundary:** `app_metadata` is **set by the server only** (via the Admin API / service_role) and is therefore trustworthy — use it for roles and permissions. `user_metadata` is **user-editable** (the user can set it during sign-up or via `updateUser`). **Never** make an authorization decision based on `user_metadata`; a malicious user can put `"role":"admin"` in it.
 
-### 3.5 Policy recipes (the ones you'll actually write)
+### 3.5 Policy recipes — the ones you'll actually write **[I]**
 
-**Owner-only (private rows): each user sees and edits only their own.**
+These five patterns cover the vast majority of real apps. Learn them as templates.
+
+**Owner-only (private rows): each user sees and edits only their own.** This is the default for anything personal — todos, notes, settings.
 
 ```sql
--- A todos table where user_id ties a row to its owner
 create table todos (
   id bigint generated always as identity primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -310,11 +336,11 @@ create policy "insert own todos"
   on todos for insert to authenticated
   with check ( (select auth.uid()) = user_id );
 
--- UPDATE: you may change your rows, and may not reassign ownership to someone else
+-- UPDATE: you may change your rows, and may NOT reassign ownership to someone else
 create policy "update own todos"
   on todos for update to authenticated
   using      ( (select auth.uid()) = user_id )   -- which rows you can target
-  with check ( (select auth.uid()) = user_id );  -- the row must still be yours afterward
+  with check ( (select auth.uid()) = user_id );  -- the row must STILL be yours afterward
 
 -- DELETE: only your own
 create policy "delete own todos"
@@ -322,12 +348,11 @@ create policy "delete own todos"
   using ( (select auth.uid()) = user_id );
 ```
 
-> **⚡ Performance note:** wrap `auth.uid()` in a scalar subquery — `(select auth.uid())` — in policies. Postgres can then evaluate it **once per query** (an InitPlan) instead of **once per row**. On large tables this is a massive speedup and is the officially recommended pattern.
+> **⚡ Performance note:** wrap `auth.uid()` in a scalar subquery — `(select auth.uid())` — in policies. Postgres can then evaluate it **once per query** (as an InitPlan) instead of **once per row**. On large tables this is a dramatic speedup and is the officially recommended pattern. The naked `auth.uid() = user_id` form is correct but slow at scale.
 
-**Public read, authenticated write.**
+**Public read, authenticated write.** Anyone can read; only logged-in users create, and only as themselves.
 
 ```sql
--- Anyone (even logged-out) can read posts; only logged-in users can create them.
 create policy "public can read posts"
   on posts for select to anon, authenticated
   using ( true );
@@ -337,7 +362,7 @@ create policy "authenticated can insert posts"
   with check ( (select auth.uid()) = author_id );
 ```
 
-**Role-based (admin can do anything).** Store the role in `app_metadata` (server-set) and check it via `auth.jwt()`:
+**Role-based (admin can do anything).** Store the role in `app_metadata` (server-set, trusted) and check it. Because policies are permissive (OR), this *adds* to the owner policies — a normal user matches the owner policy, an admin matches this one.
 
 ```sql
 create policy "admins manage all posts"
@@ -346,12 +371,9 @@ create policy "admins manage all posts"
   with check ( (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin' );
 ```
 
-Because policies are **permissive (OR)** by default, this admin policy *adds* to the owner policies: a normal user matches the owner policy, an admin matches the admin policy.
-
-**Team/membership-based (multi-tenant).** Visibility flows through a join table:
+**Team / membership-based (multi-tenant).** Visibility flows through a join table — a user can read a document if they belong to its team.
 
 ```sql
--- A user can read documents that belong to a team they're a member of.
 create policy "team members read docs"
   on documents for select to authenticated
   using (
@@ -363,11 +385,40 @@ create policy "team members read docs"
   );
 ```
 
-> For complex membership checks, factor them into a `security definer` helper function (next) and call it from the policy — both for readability and to avoid the policy itself being blocked by RLS on the join table.
+> For complex membership checks, factor them into a `security definer` helper function (§3.7) and call it from the policy — both for readability and to avoid the policy itself being blocked by RLS on the join table.
 
-### 3.6 `security definer` functions
+**Time/attribute-based (restrictive gate).** A restrictive policy that applies on top of everything — e.g. soft-deleted rows are invisible to all:
 
-By default a function runs as the **caller** (`security invoker`) — so it's still subject to RLS. A `security definer` function runs as its **creator/owner**, letting it bypass RLS for a *specific, controlled* operation. This is the safe way to do things RLS would otherwise block (e.g. checking membership without exposing the whole `team_members` table, or performing privileged writes).
+```sql
+create policy "hide soft-deleted"
+  on documents as restrictive for select to authenticated
+  using ( deleted_at is null );
+```
+
+### 3.6 Testing policies — the discipline that prevents leaks **[I]**
+
+A policy you haven't tested from the *attacker's* seat is a policy you don't trust. Always verify three perspectives:
+
+1. **As anonymous** (logged out) — should sensitive tables return nothing?
+2. **As a logged-in non-owner** — can user B read/edit user A's rows? (This is the breach you're hunting for.)
+3. **As the owner** — does the legitimate path still work?
+
+You can simulate roles directly in the SQL editor:
+
+```sql
+-- Pretend to be the 'authenticated' role with a specific user id, then run a query.
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claims', '{"sub":"<some-user-uuid>","role":"authenticated"}', true);
+  select * from todos;   -- you should only see that user's rows
+rollback;
+```
+
+### 3.7 `security definer` functions **[A]**
+
+By default a SQL function runs as the **caller** (`security invoker`), so it's still subject to RLS — calling it doesn't grant any extra access. A **`security definer`** function instead runs with the privileges of its **owner/creator**, letting it bypass RLS for a *specific, tightly-controlled* operation. This is the *safe, intentional* way to do something RLS would otherwise block: checking membership without exposing the entire `team_members` table to clients, or performing a privileged write inside an otherwise-locked-down API.
+
+The logic: rather than poking holes in your RLS policies (which weakens them everywhere), you encapsulate the privileged bit behind a function with a narrow, audited interface. The client can call `is_team_member(team_id)` but can't read `team_members` directly.
 
 ```sql
 -- Returns true if the current user belongs to the given team.
@@ -393,24 +444,24 @@ create policy "team members read docs (via fn)"
   using ( public.is_team_member(team_id) );
 ```
 
-> **🚨 `security definer` rules:**
-> - **Always `set search_path = ''`** (or to an explicit, trusted schema) to prevent a malicious user from shadowing functions/tables you call. This is the #1 definer vulnerability.
-> - Keep them small and validate inputs — they bypass RLS, so a bug = a hole.
-> - Revoke `execute` from `anon`/`public` if a function shouldn't be callable by everyone.
+> **🚨 `security definer` rules (each one is a real CVE class):**
+> - **Always `set search_path = ''`** (or an explicit, trusted schema). Otherwise a malicious user can create a function/table in their own schema that *shadows* one your function references, and your privileged function will call *their* code. This is the #1 definer vulnerability. With `search_path = ''` you must schema-qualify everything (`public.team_members`).
+> - Keep them **small** and validate inputs — they bypass RLS, so any bug is a hole that bypasses your entire security model.
+> - **Revoke `execute` from `anon`/`public`** if a function shouldn't be callable by everyone: `revoke execute on function public.some_fn from public, anon;`.
 
-### 3.7 Recommended workflow
+### 3.8 Recommended RLS workflow **[I]**
 
-1. Create table → **enable RLS immediately**.
-2. Add the *minimum* policies needed (start deny-all, open up deliberately).
-3. Test as an anonymous user, as a logged-in non-owner, and as the owner.
-4. Use the dashboard's **policy templates** and the SQL editor's "RLS not enabled" warnings as guardrails.
-5. Never paper over RLS pain by using `service_role` from the client — that's a breach waiting to happen.
+1. Create table → **enable RLS immediately** (same migration).
+2. Add the *minimum* policies needed — start from deny-all and open up deliberately, never the reverse.
+3. Test as anonymous, as a logged-in non-owner, and as the owner (§3.6).
+4. Use the dashboard's **policy templates** and the **Security Advisor** ("RLS not enabled" / "policy allows public access") as guardrails.
+5. **Never** paper over RLS pain by using `service_role` from the client — that's a breach waiting to happen. If RLS is fighting you, the fix is a `security definer` function or an RPC, not the secret key in the browser.
 
 ---
 
 ## 4. supabase-js Client Deep Dive
 
-`@supabase/supabase-js` (v2) is the universal JS/TS client. It wraps PostgREST (the query builder), GoTrue (auth), Realtime, Storage, and Functions.
+`@supabase/supabase-js` (v2) is the universal JS/TS client and the primary way a frontend talks to Supabase. It is a single object that wraps five sub-APIs: PostgREST (the database **query builder**), GoTrue (`.auth`), Realtime (`.channel`), Storage (`.storage`), and Functions (`.functions`). This section covers the query builder in depth; auth is §5, realtime §7, storage §8.
 
 ```bash
 npm install @supabase/supabase-js
@@ -426,30 +477,25 @@ const supabase = createClient(
 );
 ```
 
-Every query returns a `{ data, error }` object — **you must check `error`**; it does not throw by default.
+**The cardinal rule of the query builder:** every operation returns a `{ data, error }` object and **does not throw by default**. You must check `error` on every call — ignoring it is the most common source of silent bugs (a failed insert that you never noticed). The builder is also *lazy and chainable*: methods like `.eq()` and `.order()` build up a query, which executes when you `await` it.
 
-### 4.1 Select & the query builder
+### 4.1 Select & the query builder **[B]**
+
+`.select()` is how you read. The string you pass is a PostgREST column projection — far more powerful than it looks, because it can also embed related tables (joins).
 
 ```ts
-// Basic select — '*' returns all columns
-const { data, error } = await supabase.from("posts").select("*");
-
-// Pick specific columns
-await supabase.from("posts").select("id, title, created_at");
-
-// Rename a column in the result with an alias
-await supabase.from("posts").select("id, headline:title");
-
-// Aggregate / casting
-await supabase.from("posts").select("id, title::text");
+const { data, error } = await supabase.from("posts").select("*");       // all columns
+await supabase.from("posts").select("id, title, created_at");           // specific columns
+await supabase.from("posts").select("id, headline:title");             // alias a column in the result
+await supabase.from("posts").select("id, title::text");                // cast a column
 ```
 
-#### Nested / foreign-table joins (embedding)
+#### Nested / foreign-table joins (embedding) **[I]**
 
-PostgREST can embed related tables when foreign keys exist:
+This is one of supabase-js's best features: when foreign keys exist between tables, PostgREST can **embed** related rows in a single round-trip — no manual joins, no N+1. The relationship is inferred from the FK; you just name the related table.
 
 ```ts
-// One-to-many: posts with their author (FK posts.author_id -> profiles.id)
+// One-to-one / many-to-one: posts with their author (FK posts.author_id -> profiles.id)
 const { data } = await supabase
   .from("posts")
   .select(`
@@ -458,7 +504,7 @@ const { data } = await supabase
     author:profiles ( id, username )      -- embed the related profile, aliased as 'author'
   `);
 
-// Many side: a profile and all its posts
+// One-to-many: a profile and all its posts (returns an array)
 await supabase
   .from("profiles")
   .select(`
@@ -466,7 +512,7 @@ await supabase
     posts ( id, title )                   -- array of related posts
   `);
 
-// Disambiguating multiple FKs to the same table: specify the FK/relationship name
+// Disambiguating MULTIPLE FKs to the same table: name the specific relationship/constraint.
 await supabase
   .from("messages")
   .select(`
@@ -475,14 +521,18 @@ await supabase
     recipient:profiles!messages_recipient_id_fkey ( username )
   `);
 
-// Filtering on an embedded table, and inner join semantics:
+// Inner-join semantics + filtering on the embedded table:
 await supabase
   .from("posts")
   .select("title, comments!inner(body)")  // !inner drops posts with no comments
   .eq("comments.is_approved", true);      // filter on the embedded table's column
 ```
 
-#### Filters & operators
+> **RLS still applies to embeds.** An embedded `comments` array only contains comments the current user is allowed to SELECT. The join doesn't bypass policies — each table is filtered independently.
+
+#### Filters & operators **[B]**
+
+Filters narrow the rows. Each maps to a Postgres/PostgREST operator. They chain, and they're combined with AND by default.
 
 ```ts
 const q = supabase.from("posts").select("*");
@@ -495,95 +545,99 @@ q.lt("views", 100);                 // <
 q.lte("views", 100);                // <=
 q.like("title", "%sql%");           // LIKE (case-sensitive)
 q.ilike("title", "%sql%");          // ILIKE (case-insensitive)
-q.is("deleted_at", null);           // IS NULL / IS true/false
+q.is("deleted_at", null);           // IS NULL / IS true / IS false (use for null, not .eq)
 q.in("category", ["go", "ts"]);     // IN (...)
 q.contains("tags", ["postgres"]);   // array/jsonb contains @>
 q.containedBy("tags", ["a", "b"]);  // <@
 q.overlaps("tags", ["go", "rust"]); // && (arrays overlap)
-q.range("price", 10, 50);           // ⚠️ NOT pagination — this is a range column op
-q.match({ status: "published", featured: true });  // multiple eq at once
+q.match({ status: "published", featured: true });  // multiple eq at once (AND)
 
-// OR conditions
+// OR conditions (one string, dot-separated):
 q.or("status.eq.published,featured.eq.true");
 
-// Negation
+// Negation:
 q.not("status", "eq", "archived");
-
-// Text search (see 4.6)
 ```
 
-#### Ordering, limiting, pagination
+> **Gotcha:** use `.is("col", null)` for null checks, not `.eq("col", null)` — SQL `= NULL` is never true. And `.range(column, lo, hi)` here is a *Postgres range-type* operator, **not** pagination — pagination is `.range(from, to)` on the builder (below). Same name, different methods.
+
+#### Ordering, limiting, pagination **[B]**
 
 ```ts
-// Order
+// Order (default ascending)
 await supabase.from("posts").select("*").order("created_at", { ascending: false });
-// Order by an embedded table's column
+
+// Order by an EMBEDDED table's column
 await supabase.from("posts").select("*, profiles(username)")
   .order("username", { referencedTable: "profiles", ascending: true });
 
 // Limit
 await supabase.from("posts").select("*").limit(10);
 
-// PAGINATION with .range(from, to) — zero-based, INCLUSIVE on both ends
+// PAGINATION with .range(from, to) — zero-based, INCLUSIVE on both ends.
 //   page size 20, page index `p` (0-based):
 const p = 2, size = 20;
 await supabase
   .from("posts")
   .select("*")
-  .order("created_at", { ascending: false })
-  .range(p * size, p * size + size - 1);   // rows 40..59
+  .order("created_at", { ascending: false })   // ALWAYS order before paginating, or pages overlap
+  .range(p * size, p * size + size - 1);        // rows 40..59
 ```
 
-> **⚡ Note the two `range`s:** `.range(from, to)` (on the builder) is **row pagination**. `.range(column, lo, hi)` (a *filter*) is a Postgres range/`int4range` operator. Different methods despite the shared name.
+> **Always pair pagination with a deterministic `.order()`.** Without an order, the database may return rows in any order, so "page 2" can contain rows you already saw on page 1. For very large offsets, *keyset* pagination (filter on `created_at < lastSeen`) outperforms `.range()`.
 
-#### Single-row helpers
+#### Single-row helpers **[B]**
 
 ```ts
-// .single() — expects EXACTLY one row; errors if 0 or >1. data is the object (not array).
+// .single() — expects EXACTLY one row; errors if 0 or >1. data is the object (not an array).
 const { data, error } = await supabase
   .from("profiles").select("*").eq("id", id).single();
 
-// .maybeSingle() — 0 or 1 row; returns null data if none (no error). Use when row may not exist.
+// .maybeSingle() — 0 or 1 row; returns null data if none (NO error). Use when the row may not exist.
 const { data: maybe } = await supabase
   .from("profiles").select("*").eq("id", id).maybeSingle();
 ```
 
-### 4.2 Insert / Update / Upsert / Delete
+> Reach for `.maybeSingle()` for "fetch the user's profile if it exists" and `.single()` for "this row must exist (e.g. fetch by primary key after insert)." Using `.single()` where zero rows is legitimate produces spurious errors — a common beginner trap.
+
+### 4.2 Insert / Update / Upsert / Delete **[B]**
+
+Writes mirror the read API. By default a write returns no rows; chain `.select()` to get the affected rows back (useful for getting a generated id).
 
 ```ts
-// INSERT one or many. Use .select() to get the inserted rows back.
+// INSERT one or many. .select().single() returns the inserted row.
 const { data, error } = await supabase
   .from("posts")
   .insert({ title: "Hello", author_id: userId })
   .select()
   .single();
 
-await supabase.from("posts").insert([{ title: "A" }, { title: "B" }]); // bulk
+await supabase.from("posts").insert([{ title: "A" }, { title: "B" }]); // bulk insert
 
-// UPDATE — ALWAYS scope with a filter, or you'll update every row your RLS allows!
+// UPDATE — ALWAYS scope with a filter, or you update every row your RLS allows!
 await supabase
   .from("posts")
   .update({ title: "Edited" })
   .eq("id", postId)
   .select();
 
-// UPSERT — insert, or update on conflict of the PK / a unique constraint
+// UPSERT — insert, or update on conflict of the PK / a unique constraint.
 await supabase
   .from("profiles")
   .upsert(
     { id: userId, username: "neo" },
-    { onConflict: "id" }            // conflict target; default is the primary key
+    { onConflict: "id" }            // conflict target; defaults to the primary key
   );
 
 // DELETE — also scope it!
 await supabase.from("posts").delete().eq("id", postId);
 ```
 
-> **🚨 Footgun:** `update(...)` / `delete(...)` **without a filter** affects *all rows visible to your RLS policy*. Always add `.eq(...)` (or similar). For extra safety you can require a `where`-like filter by enabling the PostgREST "max affected rows" / using a filter discipline.
+> **🚨 Footgun:** `update(...)` / `delete(...)` **without a filter** affects *every row visible to your RLS policy*. A missing `.eq()` on an admin client (service_role) can wipe a table. Always add a filter, and treat an unfiltered mutation as a bug in code review. RLS limits the blast radius for normal users, but is no help when you're using `service_role`.
 
-### 4.3 RPC — calling Postgres functions
+### 4.3 RPC — calling Postgres functions **[I]**
 
-Define a function in SQL, then call it via `.rpc()`. Great for atomic operations, complex queries, and `security definer` privileged logic.
+`.rpc()` calls a database function you defined in SQL. This is the escape hatch for anything the query builder can't express cleanly: **atomic multi-statement operations** (the function is one transaction), complex queries, aggregations, and `security definer` privileged logic that you don't want to expose as a raw table.
 
 ```sql
 create or replace function increment_views(p_post_id bigint)
@@ -601,93 +655,98 @@ $$;
 // Call a void function with named args
 await supabase.rpc("increment_views", { p_post_id: 42 });
 
-// Call a set-returning function — you can chain filters/order on the result!
+// A set-returning function — you can CHAIN filters/order on the result, like a table!
 const { data } = await supabase
   .rpc("search_posts", { term: "postgres" })
   .order("created_at", { ascending: false })
   .limit(5);
 ```
 
-### 4.4 Count
+> **When to prefer RPC over the builder:** anything that must be atomic (e.g. "decrement stock and create order" — do it in one function so a crash can't leave half-done state), anything needing privileged access (`security definer`), and read-heavy logic you want to keep in the database close to the data. Mark read-only functions `stable` and pure ones `immutable` so Postgres can optimize them.
+
+### 4.4 Count **[I]**
 
 ```ts
-// Get rows AND an exact count (separate round-trip semantics via head/count)
+// Get rows AND an exact count in one request
 const { data, count } = await supabase
   .from("posts")
   .select("*", { count: "exact" });
 
-// Count ONLY (no rows transferred) — head: true
+// Count ONLY (transfer no rows) — head: true. Great for "total results" on a paginated list.
 const { count: total } = await supabase
   .from("posts")
   .select("*", { count: "exact", head: true });
 
-// count options: 'exact' (accurate, slower), 'planned' (estimate), 'estimated'
+// count options: 'exact' (accurate, scans), 'planned' (estimate from planner), 'estimated'
 ```
 
-### 4.5 `.throwOnError()`
+> Use `'exact'` for small/medium tables where an accurate total matters; switch to `'planned'`/`'estimated'` on huge tables where an exact count is too slow and an approximate "about 2M results" is fine.
 
-By default errors live in `error`. If you prefer try/catch (cleaner with async flows, and lets errors bubble), chain `.throwOnError()`:
+### 4.5 `.throwOnError()` **[I]**
+
+If you prefer `try/catch` ergonomics (and want errors to bubble up so you can't forget them), chain `.throwOnError()` to convert the `{ error }` return into a thrown exception.
 
 ```ts
 try {
-  // Throws a typed error instead of returning { error }
   const { data } = await supabase.from("posts").select("*").throwOnError();
   return data;
 } catch (e) {
-  // handle / log
+  // handle / log — errors can no longer be silently ignored
 }
-
-// You can also set it globally on the client:
-const supabase = createClient(url, key, { /* ... */ });
 ```
 
-### 4.6 Full-text search
+### 4.6 Full-text search **[I]**
+
+Postgres has excellent built-in full-text search. The pattern: a generated `tsvector` column plus a GIN index, queried with `.textSearch()`.
 
 ```sql
--- Add a generated tsvector column + GIN index for fast search
+-- A generated tsvector column + GIN index for fast search
 alter table posts add column fts tsvector
   generated always as (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body,''))) stored;
 create index posts_fts_idx on posts using gin (fts);
 ```
 
 ```ts
-// textSearch maps to Postgres FTS operators
 await supabase.from("posts").select("*")
-  .textSearch("fts", "postgres & realtime");           // AND
+  .textSearch("fts", "postgres & realtime");           // AND of terms
 
 await supabase.from("posts").select("*")
   .textSearch("fts", "'web app'", { type: "phrase" }); // phrase search
 
 await supabase.from("posts").select("*")
-  .textSearch("fts", "go | golang", { type: "websearch", config: "english" });
+  .textSearch("fts", "go | golang", { type: "websearch", config: "english" }); // Google-style query
 ```
 
-### 4.7 Typed client (preview)
+> Use `type: "websearch"` for user-entered search boxes — it tolerates the free-form syntax people actually type. For *semantic* (meaning-based) search rather than keyword matching, see pgvector (§12).
 
-After generating types (§10) you parameterize the client so every query is type-checked:
+### 4.7 Typed client (preview) **[I]**
+
+After generating types from your schema (§10), parameterize the client with the `Database` type so every query, filter, and result is type-checked end-to-end.
 
 ```ts
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
 const supabase = createClient<Database>(url, anonKey);
-// Now .from("posts") knows the columns of posts, and data is fully typed.
+// Now .from("posts") knows the columns of posts, and `data` is fully typed.
 ```
 
 ---
 
 ## 5. Auth (GoTrue)
 
-Supabase Auth is powered by **GoTrue** (a Go service). It manages users in the `auth.users` table, issues a **JWT access token** + a **refresh token**, and supports many sign-in methods. The access token is what RLS reads via `auth.uid()`/`auth.jwt()`.
+Supabase Auth is powered by **GoTrue**, a dedicated Go auth server. It owns the `auth.users` table, issues tokens, and supports a large menu of sign-in methods. Crucially, the token it issues is the *exact same JWT* that RLS reads via `auth.uid()` and that your Go backend will verify (§11) — auth is the thread connecting every part of this guide.
 
-### 5.1 The session / JWT model
+### 5.1 The session / JWT model — understand this first **[B]**
 
-- On sign-in, GoTrue returns a **session**: `access_token` (a short-lived JWT, default 1 hour), `refresh_token` (long-lived, single-use), `expires_at`, and the `user`.
-- The **access token** is a JWT whose `sub` claim = the user's UUID. It carries `role` (`authenticated`), `email`, `app_metadata`, `user_metadata`, `aud`, `exp`, etc.
-- The client auto-refreshes: before the access token expires it uses the refresh token to get a new pair.
-- **Every request to Supabase forwards the access token** in the `Authorization: Bearer` header, so PostgREST/Realtime/Storage know who you are and RLS applies.
+When a user signs in, GoTrue returns a **session** made of two tokens with very different lifetimes and purposes:
 
-### 5.2 Email / password
+- **`access_token`** — a short-lived **JWT** (default ~1 hour). It is *self-contained* and *signed*: it carries the user's identity (`sub` = their UUID) plus `role`, `email`, `app_metadata`, `user_metadata`, `aud`, `exp`. Every request to Supabase sends it as `Authorization: Bearer <token>`, and PostgREST/Realtime/Storage decode it to apply RLS. Because it's signed, anyone (including your Go service) can verify it *without a database lookup* — that's the entire point of JWTs.
+- **`refresh_token`** — long-lived and single-use. It is **not** a JWT; it's an opaque token whose only job is "exchange me for a fresh access_token when the old one expires." The client does this automatically just before expiry.
+
+This two-token design balances security and performance: the access token is short-lived (so a stolen one expires fast) and stateless (so verifying it is free), while the refresh token allows long sessions without re-login. The whole machinery is invisible in the browser; the complexity surfaces only in SSR (§6), where you must shuttle these tokens through cookies.
+
+### 5.2 Email / password **[B]**
 
 ```ts
 // SIGN UP — creates a user. By default sends a confirmation email (email confirm ON).
@@ -701,39 +760,42 @@ const { data, error } = await supabase.auth.signUp({
 });
 
 // SIGN IN
-const { data, error } = await supabase.auth.signInWithPassword({
+const { data: signIn, error: e2 } = await supabase.auth.signInWithPassword({
   email: "user@example.com",
   password: "S3curePassw0rd!",
 });
 
-// SIGN OUT (clears local session + revokes refresh token)
+// SIGN OUT (clears local session + revokes the refresh token)
 await supabase.auth.signOut();
 ```
 
-> **⚡ Email confirmation:** if "Confirm email" is enabled (default), `signUp` creates the user but **no session** until they click the email link. Handle the "check your inbox" state. You can disable confirmation for dev in `config.toml` / dashboard.
+> **⚡ Email confirmation gotcha:** if "Confirm email" is enabled (the default), `signUp` creates the user but returns **no session** until they click the email link. Your UI must handle the "check your inbox" state rather than assuming the user is logged in. You can disable confirmation for local dev in `config.toml`. Also: Supabase enforces a configurable minimum password length and (optionally) strength — surface validation errors to users.
 
-### 5.3 Magic links & OTP
+### 5.3 Magic links & OTP (passwordless) **[I]**
+
+Passwordless flows remove the password attack surface entirely. A magic link emails a one-click login URL; an OTP emails/SMSes a short code the user types back.
 
 ```ts
-// Magic link: emails a one-click login link (passwordless)
+// Magic link: emails a one-click login link
 await supabase.auth.signInWithOtp({
   email: "user@example.com",
   options: { emailRedirectTo: "https://myapp.com/auth/callback" },
 });
 
-// Email OTP code (6-digit) instead of a link — then verify:
+// Email OTP code (6-digit) instead of a link — then verify it:
 await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
 await supabase.auth.verifyOtp({ email, token: "123456", type: "email" });
 
-// Phone/SMS OTP (needs an SMS provider configured)
+// Phone/SMS OTP (needs an SMS provider configured in the dashboard)
 await supabase.auth.signInWithOtp({ phone: "+15551234567" });
 await supabase.auth.verifyOtp({ phone: "+15551234567", token: "123456", type: "sms" });
 ```
 
-### 5.4 OAuth providers
+### 5.4 OAuth providers **[I]**
+
+OAuth lets users sign in with an existing account (Google, GitHub, Apple, Discord, …). You enable and configure the provider's client id/secret in the dashboard; the client just kicks off the redirect.
 
 ```ts
-// Redirect-based OAuth (Google, GitHub, Apple, Discord, etc. — configured in the dashboard)
 await supabase.auth.signInWithOAuth({
   provider: "github",
   options: {
@@ -741,69 +803,73 @@ await supabase.auth.signInWithOAuth({
     scopes: "read:user",
   },
 });
-// The user is redirected to the provider, then back to your callback route,
-// which exchanges the code for a session (see §6 Route Handler for SSR).
+// The user is bounced to the provider, then back to your callback route,
+// which exchanges the returned ?code for a session (see §6.6 for the SSR route handler).
 ```
 
-### 5.5 `getUser()` vs `getSession()` — the safety distinction
+### 5.5 `getUser()` vs `getSession()` — the safety distinction **[I]**
+
+These two look interchangeable and are *not*. Choosing wrong on the server is a real vulnerability.
 
 ```ts
 // getSession() — reads the session from local storage / cookies. FAST but UNVERIFIED:
-//   the access token is taken at face value. Safe in the browser; NOT safe to trust on the server.
+//   it takes the access token at face value without checking it with the auth server.
 const { data: { session } } = await supabase.auth.getSession();
 
-// getUser() — sends the access token to GoTrue (the Auth server) to VALIDATE it,
-//   and returns the authenticated user. Slower (network) but TRUSTWORTHY.
+// getUser() — sends the access token to GoTrue to VALIDATE it (signature, expiry, revocation)
+//   and returns the authenticated user. Slower (a network call) but TRUSTWORTHY.
 const { data: { user } } = await supabase.auth.getUser();
 ```
 
-> **🚨 Server-side rule:** **always use `getUser()` on the server** (Server Components, Route Handlers, middleware) to gate access. `getSession()` only reads cookies that a malicious client could tamper with; it does **not** verify the JWT signature/expiry against the auth server. Use `getUser()` for any authorization decision on the server.
+> **🚨 Server-side rule:** **always use `getUser()` on the server** (Server Components, Route Handlers, middleware) for any authorization decision. `getSession()` merely reads cookies that a malicious client could have tampered with; it does **not** verify the JWT. In the browser, `getSession()` is fine for reading "am I logged in" because the browser is the user's own trusted environment, but the moment a *decision about access* is made server-side, use `getUser()`.
 
-### 5.6 Password reset & email change
+### 5.6 Password reset & email change **[I]**
 
 ```ts
 // 1) Send the reset email
 await supabase.auth.resetPasswordForEmail("user@example.com", {
   redirectTo: "https://myapp.com/account/update-password",
 });
-// 2) On that page the user is in a recovery session; set the new password:
+// 2) On that page the user is in a temporary recovery session; set the new password:
 await supabase.auth.updateUser({ password: "newSecret123!" });
 
-// Change email (sends confirmation to the new address)
+// Change email (sends a confirmation to the NEW address before it takes effect)
 await supabase.auth.updateUser({ email: "new@example.com" });
 ```
 
-### 5.7 User metadata
+### 5.7 User metadata — the trust boundary, again **[I]**
 
 ```ts
-// user_metadata: user-editable profile-ish data. NOT for authorization.
+// user_metadata: user-editable profile-ish data. NEVER for authorization.
 await supabase.auth.updateUser({ data: { full_name: "Ada", avatar_url: "..." } });
 
-// app_metadata: server-set, trusted (roles/permissions). Set it from a TRUSTED context only
-// (Edge Function / Go backend with service_role via the Admin API), NOT from the client.
+// app_metadata: server-set, TRUSTED (roles/permissions). Set it only from a trusted context
+// (Edge Function / Go backend with service_role via the Admin API) — NOT from the client.
 ```
 
 ```ts
-// Reacting to auth changes anywhere in the app (browser)
+// React to auth changes anywhere in the app (browser). Useful for syncing UI state.
 supabase.auth.onAuthStateChange((event, session) => {
   // event: 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_UPDATED' | 'PASSWORD_RECOVERY'
 });
 ```
 
-### 5.8 Anonymous sign-ins
+### 5.8 Anonymous sign-ins **[I]**
 
 ```ts
-// Create a throwaway anonymous user (gets a real auth.users row + JWT, role 'authenticated').
-// Great for "try before you sign up" — later link to email/OAuth to convert.
+// Create a throwaway anonymous user — a real auth.users row + JWT, role 'authenticated'.
+// Great for "try before you sign up": the user can save data, then convert later.
 const { data, error } = await supabase.auth.signInAnonymously();
 
-// Convert later by adding credentials to the same user:
+// Convert later by adding real credentials to the SAME user (data is preserved):
 await supabase.auth.updateUser({ email: "real@example.com" });
 ```
 
-> Anonymous users still hit RLS as `authenticated`. Distinguish them in policies via `auth.jwt() ->> 'is_anonymous'` if you need to restrict what anon-converted users can do.
+> Anonymous users hit RLS as `authenticated`, so they pass your normal policies. If you need to restrict what un-converted anon users can do, branch on the `is_anonymous` JWT claim in a policy: `using ( (auth.jwt() ->> 'is_anonymous')::boolean is not true )`.
 
-### 5.9 MFA (multi-factor auth)
+### 5.9 MFA (multi-factor auth) **[A]**
+
+MFA adds a second factor (TOTP authenticator app) on top of the password, raising the *assurance level* of a session from `aal1` to `aal2`.
 
 ```ts
 // 1) Enroll a TOTP factor → returns a QR code / secret to show the user
@@ -818,19 +884,19 @@ await supabase.auth.mfa.verify({
   code: "123456",
 });
 
-// 3) On future logins, after password, check assurance level & step up:
+// 3) On future logins, after the password step, check assurance level & step up:
 const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-// aal.currentLevel 'aal1' (password) vs nextLevel 'aal2' (MFA required)
+// aal.currentLevel 'aal1' (password only) vs nextLevel 'aal2' (MFA satisfied)
 ```
 
-> Enforce MFA in **RLS** using the JWT's `aal` claim: `using ( (auth.jwt() ->> 'aal') = 'aal2' )` for sensitive tables.
+> **Enforce MFA in RLS**, not just in the UI, for truly sensitive tables — the UI can be bypassed but the database can't: `using ( (auth.jwt() ->> 'aal') = 'aal2' )`.
 
-### 5.10 Admin API (server-only)
+### 5.10 Admin API (server-only) **[A]**
 
-With the `service_role` key you can manage users programmatically (create, delete, set `app_metadata`, list). This is server-only and is exactly what your Go backend or an Edge Function uses to, e.g., assign roles. (Go equivalent: hit the GoTrue Admin REST endpoints — §11.3.)
+With the `service_role` key you can manage users programmatically — create, delete, list, and (importantly) set the trusted `app_metadata`. This is exactly how your Go backend or an Edge Function assigns roles. It is **server-only** because it uses the secret key. (Go equivalent: the GoTrue Admin REST endpoints — §11.3.)
 
 ```ts
-const admin = createClient(url, SERVICE_ROLE_KEY); // SERVER ONLY
+const admin = createClient(url, SERVICE_ROLE_KEY); // SERVER ONLY — never ship this client to a browser
 await admin.auth.admin.updateUserById(userId, { app_metadata: { role: "admin" } });
 await admin.auth.admin.createUser({ email, password, email_confirm: true });
 await admin.auth.admin.deleteUser(userId);
@@ -840,7 +906,13 @@ await admin.auth.admin.deleteUser(userId);
 
 ## 6. Next.js Integration (App Router) with @supabase/ssr
 
-This is the canonical 2026 setup. The challenge in SSR is that auth state lives in **cookies** that must be readable/writable across the browser, Server Components, Server Actions, Route Handlers, and **refreshed in middleware**. The `@supabase/ssr` package handles the cookie wiring.
+This is the canonical 2026 setup and the most error-prone part of Supabase + Next.js, so it gets careful treatment. (For the App Router concepts — Server vs Client Components, Server Actions, middleware — see `NEXTJS_16_GUIDE.md`.)
+
+### 6.1 The core SSR challenge **[I]**
+
+In a pure browser app, supabase-js stores the session in `localStorage` and everything just works. Server-side rendering breaks that model: the **server** also needs to know who the user is (to render their dashboard, enforce auth on a protected page), but the server has no `localStorage` — it only sees the HTTP request's **cookies**. And the access token expires every hour, so *something* must refresh it and write the new cookies back, in a way that works across the four Next.js execution contexts: Server Components (read-only cookies), Server Actions, Route Handlers (read/write cookies), and **middleware** (the one place that can reliably refresh on every request).
+
+The `@supabase/ssr` package exists to wire this cookie plumbing correctly. You build three small helper modules (a browser client, a server client, a middleware client) plus a `middleware.ts`. Get these right once and forget about them.
 
 ```bash
 npm install @supabase/supabase-js @supabase/ssr
@@ -851,16 +923,17 @@ npm install @supabase/supabase-js @supabase/ssr
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 # NEVER put SERVICE_ROLE here as NEXT_PUBLIC_. If you need it server-side:
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # used only in server-only modules
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # used only in server-only modules, never imported into client code
 ```
 
-> **⚡ `@supabase/auth-helpers-nextjs` is deprecated.** All code below uses `@supabase/ssr`. If you see `createClientComponentClient` / `createServerComponentClient` from auth-helpers in old tutorials, migrate to the patterns here.
+> **⚡ `@supabase/auth-helpers-nextjs` is deprecated.** Everything below uses `@supabase/ssr`. If you see `createClientComponentClient`/`createServerComponentClient` from auth-helpers in old tutorials, ignore them and use these patterns.
 
-### 6.1 `utils/supabase/client.ts` — the browser client
+### 6.2 `utils/supabase/client.ts` — the browser client **[I]**
+
+Used inside Client Components (`"use client"`). It reads/writes the session via browser cookies (not localStorage, so the server can see it too).
 
 ```ts
 // src/utils/supabase/client.ts
-// Used in Client Components ("use client"). Reads/writes auth via browser cookies.
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {
@@ -871,12 +944,12 @@ export function createClient() {
 }
 ```
 
-### 6.2 `utils/supabase/server.ts` — the server client
+### 6.3 `utils/supabase/server.ts` — the server client **[I]**
+
+Used in Server Components, Server Actions, and Route Handlers. It bridges Supabase's auth to Next.js's cookie store via `getAll`/`setAll`.
 
 ```ts
 // src/utils/supabase/server.ts
-// Used in Server Components, Server Actions, and Route Handlers.
-// It bridges Supabase auth to Next.js's cookie store.
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -889,20 +962,18 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // Read all cookies for the request
         getAll() {
           return cookieStore.getAll();
         },
-        // Write refreshed auth cookies back.
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options),
             );
           } catch {
-            // The `setAll` was called from a Server Component, where setting cookies
-            // is not allowed. This is SAFE TO IGNORE *if* you refresh the session in
-            // middleware (which we do in §6.3) — middleware will persist the cookies.
+            // Setting cookies from a Server Component is not allowed and throws here.
+            // This is SAFE TO IGNORE *because* the middleware (§6.4) refreshes the
+            // session and persists cookies on every request.
           }
         },
       },
@@ -911,9 +982,9 @@ export async function createClient() {
 }
 ```
 
-### 6.3 `utils/supabase/middleware.ts` + `middleware.ts` — session refresh (REQUIRED)
+### 6.4 Middleware — session refresh (REQUIRED, not optional) **[A]**
 
-The access token expires; **middleware refreshes it on every request** and writes the new cookies so Server Components see a valid session. This is the load-bearing piece — skip it and users get logged out / Server Components see stale auth.
+The access token expires hourly; **middleware refreshes it on every request** and writes the new cookies so Server Components see a valid session. This is the load-bearing piece — skip it and users get logged out at random and Server Components see stale auth. The ordering rules in the comments are *not* stylistic; violating them causes logout loops that are miserable to debug.
 
 ```ts
 // src/utils/supabase/middleware.ts
@@ -933,7 +1004,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Write to BOTH the request (so this pass sees them) and the response
+          // Write to BOTH the request (so THIS pass sees them) and the response
           // (so the browser stores them).
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
@@ -945,8 +1016,8 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // 🚨 IMPORTANT: do NOT run code between createServerClient and getUser().
-  // getUser() triggers the token refresh and revalidation. It must come first.
+  // 🚨 Do NOT run any code between createServerClient and getUser(). getUser() triggers
+  // the token refresh + cookie write; anything in between can corrupt the refresh.
   const { data: { user } } = await supabase.auth.getUser();
 
   // Optional: redirect unauthenticated users away from protected paths.
@@ -960,14 +1031,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 🚨 Return supabaseResponse as-is (with its cookies). If you create a NEW
-  // response, copy over supabaseResponse.cookies or auth will break.
+  // 🚨 Return supabaseResponse as-is (with its cookies). If you build a NEW response,
+  // you MUST copy supabaseResponse.cookies onto it or auth silently breaks.
   return supabaseResponse;
 }
 ```
 
 ```ts
-// src/middleware.ts (project root of the app dir tree)
+// src/middleware.ts
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/utils/supabase/middleware";
 
@@ -976,14 +1047,14 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except static assets & images.
+  // Run on everything except static assets & images (performance).
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
 ```
 
-### 6.4 Reading the user in a Server Component
+### 6.5 Reading the user in a Server Component **[I]**
 
 ```tsx
 // src/app/dashboard/page.tsx — a protected Server Component
@@ -997,7 +1068,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // RLS automatically scopes this to the logged-in user via the forwarded JWT.
+  // RLS automatically scopes this to the logged-in user via the forwarded JWT — no WHERE clause needed.
   const { data: todos } = await supabase
     .from("todos")
     .select("*")
@@ -1012,7 +1083,9 @@ export default async function DashboardPage() {
 }
 ```
 
-### 6.5 Server Actions (mutations + auth)
+### 6.6 Server Actions (mutations + auth) **[I]**
+
+Server Actions are the idiomatic way to mutate data from forms in the App Router — no API route needed.
 
 ```tsx
 // src/app/login/actions.ts
@@ -1068,12 +1141,12 @@ export default function LoginPage() {
 }
 ```
 
-### 6.6 Route Handler: the OAuth / email-confirm callback
+### 6.7 Route Handler: the OAuth / email-confirm callback **[I]**
+
+OAuth and magic links redirect back to your app with a `?code`. This route exchanges that code for a session and writes the auth cookies.
 
 ```ts
 // src/app/auth/callback/route.ts
-// Exchanges the ?code from OAuth / magic link / email confirm for a session,
-// writing the auth cookies, then redirects into the app.
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
@@ -1091,7 +1164,7 @@ export async function GET(request: Request) {
 }
 ```
 
-### 6.7 Calling supabase-js from a Client Component
+### 6.8 Calling supabase-js from a Client Component **[I]**
 
 ```tsx
 "use client";
@@ -1108,32 +1181,40 @@ export function LiveTodos() {
 }
 ```
 
-### 6.8 SSR auth pitfalls (read this)
+### 6.9 SSR auth pitfalls (read this twice) **[A]**
 
 | Pitfall | Fix |
 |---|---|
 | Using `getSession()` server-side for gating | Use **`getUser()`** — it verifies with the auth server. |
-| No middleware / not calling `getUser()` in it | Tokens never refresh → random logouts & stale auth. The middleware in §6.3 is **required**. |
-| Code between `createServerClient` and `getUser()` in middleware | Can cause hard-to-debug logout loops. Call `getUser()` immediately. |
+| No middleware / not calling `getUser()` in it | Tokens never refresh → random logouts & stale auth. The §6.4 middleware is **required**. |
+| Code between `createServerClient` and `getUser()` in middleware | Causes hard-to-debug logout loops. Call `getUser()` immediately. |
 | Returning a new `NextResponse` from middleware without copying cookies | Refreshed cookies are dropped → user logged out. Return `supabaseResponse`. |
 | Trying to `cookies().set()` in a Server Component | Not allowed; the `try/catch` in `server.ts` swallows it, and middleware persists cookies instead. |
 | Putting `service_role` in `NEXT_PUBLIC_*` | Catastrophic leak. Service role is server-only and never `NEXT_PUBLIC_`. |
-| Forgetting `emailRedirectTo` / Site URL config | Confirmation/OAuth redirects fail. Set Site URL + redirect allow-list in the dashboard. |
+| Forgetting `emailRedirectTo` / Site URL config | Confirmation/OAuth redirects fail. Set Site URL + a redirect allow-list in the dashboard. |
 
 ---
 
 ## 7. Realtime
 
-Realtime lets clients **subscribe to database changes**, send ephemeral **broadcast** messages, and track **presence** — over WebSockets, organized into **channels**.
+Realtime lets clients **subscribe to database changes**, send ephemeral **broadcast** messages, and track **presence** (who's online) — all over WebSockets, organized into named **channels**. It's what powers live feeds, chat, collaborative cursors, and dashboards that update without polling.
 
-### 7.1 Postgres Changes (listen to inserts/updates/deletes)
+There are three distinct features under the "Realtime" umbrella, each for a different job:
 
-First, the table must be in the realtime **publication** (so changes are streamed):
+| Feature | What | Use for | Stored? |
+|---|---|---|---|
+| **Postgres Changes** | Stream INSERT/UPDATE/DELETE on a table | Live data that's also persisted (chat messages, orders) | ✅ in the table |
+| **Broadcast** | Low-latency pub/sub of arbitrary messages | Cursors, typing indicators, game state, reactions | ❌ ephemeral |
+| **Presence** | Track who is currently in a channel | "online now" lists, collaborative editing avatars | ❌ in-memory |
+
+### 7.1 Postgres Changes (listen to inserts/updates/deletes) **[I]**
+
+First the table must be in the realtime **publication** so its changes are streamed via logical replication:
 
 ```sql
 -- Add a table to the realtime publication
 alter publication supabase_realtime add table messages;
--- (Optional) include full old-row data on update/delete for richer payloads
+-- (Optional) include full OLD-row data on update/delete for richer payloads
 alter table messages replica identity full;
 ```
 
@@ -1144,10 +1225,10 @@ import { createClient } from "@/utils/supabase/client";
 const supabase = createClient();
 
 const channel = supabase
-  .channel("room:lobby")                        // any channel name
+  .channel("room:lobby")                        // any channel name you choose
   .on(
     "postgres_changes",
-    { event: "INSERT", schema: "public", table: "messages" }, // filter what to receive
+    { event: "INSERT", schema: "public", table: "messages" },
     (payload) => {
       console.log("new message:", payload.new); // payload.new = the inserted row
     },
@@ -1164,17 +1245,19 @@ const channel = supabase
     if (status === "SUBSCRIBED") console.log("listening");
   });
 
-// Cleanup (e.g. in useEffect return)
+// Cleanup (e.g. in a useEffect return) — leaking channels leaks WebSocket connections.
 supabase.removeChannel(channel);
 ```
 
-> **🚨 RLS + Realtime:** Postgres Changes **respect RLS** for the `authenticated`/`anon` roles — a client only receives change events for rows it's allowed to **SELECT**. You must enable RLS and have a SELECT policy, *and* enable the table for realtime, or clients receive nothing (or, if misconfigured without RLS, everything — dangerous). Realtime authorization uses the user's JWT just like queries.
+> **🚨 RLS + Realtime:** Postgres Changes **respect RLS** for the `authenticated`/`anon` roles — a client only receives change events for rows it is allowed to **SELECT**. So you need (1) RLS enabled with a SELECT policy *and* (2) the table added to the publication. Miss the policy and clients receive nothing; the security model is the same one as queries, applied to the live stream.
 
-### 7.2 Broadcast (ephemeral pub/sub, not stored)
+### 7.2 Broadcast (ephemeral pub/sub) **[I]**
+
+Broadcast doesn't touch the database — it's a fast message bus between connected clients. Ideal for things you don't need to store.
 
 ```ts
 const channel = supabase.channel("game:1", {
-  config: { broadcast: { self: true } },   // also receive your own broadcasts
+  config: { broadcast: { self: true } },   // also receive your OWN broadcasts
 });
 
 channel
@@ -1183,17 +1266,17 @@ channel
   })
   .subscribe();
 
-// Send a message to everyone on the channel (low-latency, not persisted)
+// Send to everyone on the channel (low-latency, not persisted)
 channel.send({ type: "broadcast", event: "cursor", payload: { x: 12, y: 80 } });
 ```
 
-> Broadcast is ideal for cursors, typing indicators, game state, live reactions — anything you don't need to store. You can also gate broadcast/presence with **Realtime Authorization** policies on the `realtime.messages` table.
+> You can gate broadcast/presence with **Realtime Authorization** policies on the `realtime.messages` table — the same RLS approach, applied to channel access.
 
-### 7.3 Presence (who's online)
+### 7.3 Presence (who's online) **[I]**
 
 ```ts
 const channel = supabase.channel("room:lobby", {
-  config: { presence: { key: userId } },   // unique key per client
+  config: { presence: { key: userId } },   // a unique key per client
 });
 
 channel
@@ -1210,7 +1293,9 @@ channel
   });
 ```
 
-### 7.4 A live chat (Postgres Changes + insert)
+### 7.4 A live chat (Postgres Changes + insert) **[I]**
+
+Putting it together: load history once, then append new rows as they arrive live.
 
 ```tsx
 "use client";
@@ -1261,12 +1346,14 @@ export function Chat({ roomId }: { roomId: number }) {
 
 ## 8. Storage
 
-Storage is S3-style object storage, organized into **buckets**, with access governed by **Postgres RLS** (the `storage.objects` table).
+Storage is S3-style object storage organized into **buckets**, with access governed by the *same* **Postgres RLS** you already learned — files are rows in the `storage.objects` table, and you write policies against it. That unification means you don't learn a second permission system; per-user file isolation is just another RLS policy.
 
-### 8.1 Buckets: public vs private
+### 8.1 Buckets: public vs private **[I]**
+
+A bucket is a top-level container. Its `public` flag decides the default read behavior:
 
 ```ts
-// Create buckets (usually done once, via dashboard or service_role)
+// Create buckets (usually once, via dashboard or service_role)
 await admin.storage.createBucket("avatars", { public: true });   // public read by URL
 await admin.storage.createBucket("invoices", {
   public: false,                                                  // requires auth / signed URLs
@@ -1280,12 +1367,14 @@ await admin.storage.createBucket("invoices", {
 | **Public** | Anyone with the URL can GET (no auth). RLS still governs writes. | Avatars, public images, marketing assets |
 | **Private** | No public URL; need auth + RLS, or a time-limited **signed URL**. | Invoices, user documents, anything sensitive |
 
-### 8.2 Upload / download / list / remove
+> **Security default:** make buckets **private** unless the content is genuinely public. A "public" bucket means a leaked or guessed URL is readable forever by anyone — fine for avatars, a breach for medical records or invoices.
+
+### 8.2 Upload / download / list / remove **[I]**
 
 ```ts
 const supabase = createClient();
 
-// UPLOAD (path within bucket). upsert overwrites if it exists.
+// UPLOAD (path within the bucket). upsert overwrites if it exists.
 const { data, error } = await supabase.storage
   .from("avatars")
   .upload(`${userId}/profile.png`, file, {
@@ -1296,13 +1385,11 @@ const { data, error } = await supabase.storage
 
 // PUBLIC URL (only meaningful for public buckets) — synchronous, no auth check
 const { data: pub } = supabase.storage.from("avatars").getPublicUrl(`${userId}/profile.png`);
-// pub.publicUrl
 
-// SIGNED URL (private buckets) — time-limited link
+// SIGNED URL (private buckets) — a time-limited link to a private object
 const { data: signed } = await supabase.storage
   .from("invoices")
   .createSignedUrl(`${userId}/2026-06.pdf`, 60 * 60); // valid 1 hour
-// signed.signedUrl
 
 // DOWNLOAD (returns a Blob)
 const { data: blob } = await supabase.storage.from("invoices").download(`${userId}/2026-06.pdf`);
@@ -1316,9 +1403,11 @@ const { data: files } = await supabase.storage.from("avatars").list(userId, {
 await supabase.storage.from("avatars").remove([`${userId}/profile.png`]);
 ```
 
-### 8.3 RLS policies on storage
+> **Signed URLs are your private-file workhorse.** A signed URL embeds a short-lived token, so you can hand a browser a direct link to a private object without exposing credentials. Keep expiry short (minutes to an hour) and generate them on demand — never store long-lived signed URLs.
 
-Files are rows in `storage.objects`; you write policies against that table. A common pattern: users may only touch files in a folder named after their user id.
+### 8.3 RLS policies on storage **[I]**
+
+The canonical pattern: store each user's files under a folder named after their user id, then a policy checks that the first path segment matches `auth.uid()`. This gives per-user isolation in one line.
 
 ```sql
 -- Allow authenticated users to UPLOAD into their own folder in 'avatars'
@@ -1343,31 +1432,32 @@ create policy "users manage own avatar"
   using ( bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text );
 ```
 
-> `storage.foldername(name)` returns the path segments as an array; `[1]` is the first folder. Naming uploads `"<uid>/file.ext"` makes per-user isolation a one-liner.
+> `storage.foldername(name)` splits the object path into an array of segments; `[1]` is the first folder. Naming uploads `"<uid>/file.ext"` makes per-user isolation trivial — so **always prefix uploads with the user id** or these policies can't work.
 
-### 8.4 Image transformations
+### 8.4 Image transformations **[I]**
 
-For images you can request resized/optimized variants on the fly (Pro feature on hosted):
+For images you can request resized/optimized variants on the fly (a Pro feature on hosted), avoiding the need to pre-generate thumbnails.
 
 ```ts
 const { data } = supabase.storage.from("avatars").getPublicUrl(`${userId}/profile.png`, {
   transform: { width: 200, height: 200, resize: "cover", quality: 80 },
 });
-
-// Same options work on createSignedUrl({ transform: {...} }) and download({ transform: {...} })
+// The same transform option works on createSignedUrl({ transform }) and download({ transform }).
 ```
 
-### 8.5 Resumable uploads (large files)
+### 8.5 Resumable uploads (large files) **[I]**
 
-For large files, use **resumable uploads** (TUS protocol) so interrupted uploads can continue. The browser SDK exposes `uploadToSignedUrl`, and the `tus-js-client` integrates with the Storage TUS endpoint (`/storage/v1/upload/resumable`). Use this for video / multi-GB files; standard `upload()` is fine up to the bucket's size limit for normal assets.
+For large files use **resumable uploads** (the TUS protocol) so an interrupted upload can continue rather than restart. The Storage TUS endpoint is `/storage/v1/upload/resumable`, and `tus-js-client` integrates with it. Use this for video / multi-GB files; the plain `upload()` is fine up to the bucket's size limit for ordinary assets.
 
 ---
 
 ## 9. Edge Functions (Deno)
 
-Edge Functions are **Deno** serverless functions deployed to the edge. Use them for: webhooks (Stripe, etc.), server-side logic that needs the `service_role` key safely, third-party API calls hiding secrets, scheduled jobs, and custom auth flows.
+Edge Functions are serverless TypeScript/JavaScript functions running on the **Deno** runtime, deployed to the edge. Use them whenever you need server-side code that the browser shouldn't run: webhooks (Stripe, GitHub), logic that needs the `service_role` key safely, third-party API calls that hide secrets, scheduled jobs, and custom auth flows.
 
-### 9.1 Write & run locally
+The mental model: an Edge Function is your "trusted server snippet" inside the Supabase platform. It receives the caller's JWT, can act *as that user* (forwarding the JWT so RLS applies) or *as an admin* (using `service_role` from its secure environment), and has your secrets injected.
+
+### 9.1 Write & run locally **[I]**
 
 ```bash
 supabase functions new hello       # scaffolds supabase/functions/hello/index.ts
@@ -1376,7 +1466,7 @@ supabase functions serve hello     # run locally (hot reload) at /functions/v1/h
 
 ```ts
 // supabase/functions/hello/index.ts
-// Deno runtime. Imports are by URL (or via an import map / deno.json).
+// Deno runtime. Imports are by URL or JSR specifier (or via an import map / deno.json).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 Deno.serve(async (req) => {
@@ -1392,7 +1482,7 @@ Deno.serve(async (req) => {
 
   const { name } = await req.json().catch(() => ({ name: "world" }));
 
-  // Build a Supabase client that ACTS AS THE CALLER (forwards their JWT → RLS applies).
+  // Build a client that ACTS AS THE CALLER (forwards their JWT → RLS applies).
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -1400,7 +1490,7 @@ Deno.serve(async (req) => {
   );
   const { data: { user } } = await supabase.auth.getUser();
 
-  // For privileged work, use the service_role (bypasses RLS) — server-only env, safe here.
+  // For privileged work, use the service_role (bypasses RLS) — server-only env, safe here:
   // const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   return new Response(JSON.stringify({ message: `Hello ${name}`, user: user?.id ?? null }), {
@@ -1409,7 +1499,7 @@ Deno.serve(async (req) => {
 });
 ```
 
-### 9.2 Secrets
+### 9.2 Secrets **[I]**
 
 ```bash
 # SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY are injected automatically.
@@ -1423,7 +1513,7 @@ supabase secrets list
 const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
 ```
 
-### 9.3 Deploy & invoke
+### 9.3 Deploy & invoke **[I]**
 
 ```bash
 supabase functions deploy hello                 # deploy to the linked project
@@ -1437,15 +1527,15 @@ const { data, error } = await supabase.functions.invoke("hello", {
 });
 ```
 
-> **⚡ JWT verification:** by default Edge Functions **require a valid Supabase JWT** (the platform checks it before your code runs). For public webhooks (Stripe, GitHub) deploy with `--no-verify-jwt` and verify the provider's signature yourself inside the function.
+> **⚡ JWT verification:** by default Edge Functions **require a valid Supabase JWT** — the platform checks it before your code runs. For public webhooks (Stripe, GitHub) deploy with `--no-verify-jwt` so unauthenticated providers can call them, and then **verify the provider's own signature yourself** inside the function. Never leave a `--no-verify-jwt` function unprotected.
 
 ---
 
 ## 10. Database Migrations & Generated Types
 
-### 10.1 Migration workflow
+### 10.1 Why migrations, and the workflow **[I]**
 
-Migrations are timestamped SQL files in `supabase/migrations/`. They are your schema's version history — commit them.
+A migration is a timestamped SQL file in `supabase/migrations/`. Together they are your schema's complete version history — every table, column, policy, function, and index, recorded as code you commit to git. The logic is the same as code migrations anywhere: schema must be **reproducible** (any teammate or CI can build an identical DB from zero), **reviewable** (a colleague can see the exact DDL in a PR), and **ordered** (applied in sequence, so production matches dev). Clicking tables together in the dashboard gives you none of that — it's an untracked snowflake you can't recreate.
 
 ```bash
 # Create an empty migration and write SQL into it
@@ -1465,7 +1555,7 @@ supabase db push
 supabase migration list
 ```
 
-A migration file is just SQL:
+A migration file is just SQL — and notice it includes the RLS setup, because security is part of the schema:
 
 ```sql
 -- supabase/migrations/20260621101500_add_posts_table.sql
@@ -1485,35 +1575,31 @@ create policy "authors write own posts" on public.posts
   for insert to authenticated with check ((select auth.uid()) = author_id);
 ```
 
-Seed data for local dev:
-
 ```sql
--- supabase/seed.sql  (runs on `supabase db reset`)
+-- supabase/seed.sql  (runs on `supabase db reset` — dev seed data only)
 insert into public.posts (title, body) values ('Hello', 'First post');
 ```
 
-### 10.2 Generating TypeScript types
+### 10.2 Generating TypeScript types **[I]**
+
+The CLI can introspect your schema and emit a `Database` type describing every table's Row/Insert/Update shapes. Wire it into the client and you get **end-to-end type safety**: a typo in a column name, a wrong-typed value, or a missing required field becomes a compile error instead of a runtime surprise.
 
 ```bash
-# From the local stack:
-supabase gen types typescript --local > src/types/database.types.ts
-# From the remote project:
-supabase gen types typescript --project-id <ref> --schema public > src/types/database.types.ts
+supabase gen types typescript --local > src/types/database.types.ts                       # from local
+supabase gen types typescript --project-id <ref> --schema public > src/types/database.types.ts  # from remote
 ```
 
 ```ts
-// Use the generated Database type everywhere for end-to-end type safety.
 import type { Database } from "@/types/database.types";
 
-// Handy row/insert/update helpers from the generated types:
+// Handy row/insert/update helpers derived from the generated types:
 type Post = Database["public"]["Tables"]["posts"]["Row"];
 type PostInsert = Database["public"]["Tables"]["posts"]["Insert"];
 type PostUpdate = Database["public"]["Tables"]["posts"]["Update"];
 ```
 
-Wire it into the SSR clients so all queries are typed:
-
 ```ts
+// Wire it into the SSR clients so EVERY query is typed.
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/database.types";
 
@@ -1521,22 +1607,26 @@ export const createClient = () =>
   createBrowserClient<Database>(url, anonKey); // .from('posts') is now fully typed
 ```
 
-> **Best practice:** regenerate types whenever the schema changes (add it to a `package.json` script or CI). Stale types silently lie to you.
+> **Best practice:** regenerate types whenever the schema changes (add a `package.json` script and/or a CI check). Stale types silently lie to you — they'll claim a dropped column still exists and let you ship code that fails at runtime.
 
 ---
 
 ## 11. Golang Integration (Direct DB, JWT, REST, RLS)
 
-Supabase's Go story is under-documented because Supabase pushes the JS client. But a Go service is a first-class citizen against the same Postgres + auth. There are **four** realistic approaches; you'll often combine (a) + (b).
+Supabase's Go story is under-documented because the marketing pushes the JS client, but a Go service is a first-class citizen against the same Postgres + Auth. This section is the guide's signature material: how to make a Go backend coexist with a Supabase project under **one shared authorization model**. (For Go language depth see `GO_GUIDE.md`; for the JWT/crypto background see `GO_JWT_ARGON2_GUIDE.md`.)
+
+There are **four** realistic approaches; production apps usually combine (a) + (b):
 
 | Approach | What | When |
 |---|---|---|
 | **(a) Direct Postgres** via `pgx` | Connect straight to the DB, write SQL, bypass PostgREST | Custom Go API, heavy/complex queries, background jobs, performance |
 | **(b) Verify Supabase JWTs** | Validate the access token Next.js/clients send | Any Go endpoint that must know *who* is calling |
-| **(c) Call PostgREST / Storage over HTTP** | Use the REST API with service_role or user JWT | Reuse RLS/PostgREST logic; simple CRUD without writing SQL |
-| **(d) Respect RLS from Go** | Pass the user's JWT so Postgres enforces policies | When you want one authorization model across JS + Go |
+| **(c) Call PostgREST / Storage over HTTP** | Use the REST API with service_role or the user's JWT | Reuse RLS/PostgREST logic; simple CRUD without writing SQL |
+| **(d) Respect RLS from Go** | Pass the user's JWT so Postgres enforces policies | One authorization model across JS + Go |
 
-### 11.1 (a) Connecting directly with `pgx`
+### 11.1 (a) Connecting directly with `pgx` **[A]**
+
+`pgx` is the de-facto Postgres driver for Go. Use a connection *pool* (`pgxpool`) for a server — it manages a set of reusable connections so you don't pay connection setup cost per request.
 
 ```bash
 go get github.com/jackc/pgx/v5
@@ -1559,7 +1649,7 @@ import (
 //
 // Use the SESSION-mode pooler (port 5432 pooler host) or DIRECT (5432) for a
 // long-lived Go server. If you must use TRANSACTION mode (6543), you MUST disable
-// prepared-statement caching (see the connStr note below) or pgx will error with
+// prepared-statement caching (see the note below) or pgx errors with
 // "prepared statement already exists".
 func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 	// Example (session/direct). Keep the password in an env/secret, never in code.
@@ -1575,10 +1665,10 @@ func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 	cfg.MaxConnIdleTime = 5 * time.Minute
 	cfg.MaxConnLifetime = 30 * time.Minute
 
-	// ── If using TRANSACTION pooler (port 6543), uncomment this to avoid the
+	// ── If using the TRANSACTION pooler (port 6543), uncomment to avoid the
 	//    prepared-statement cache incompatibility:
 	// cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	//    (import "github.com/jackc/pgx/v5"). Alternatively append
+	//    (import "github.com/jackc/pgx/v5"). Or append
 	//    "?default_query_exec_mode=simple_protocol" to the connection string.
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
@@ -1593,8 +1683,8 @@ func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 ```
 
 ```go
-// Example queries with pgx. Note: a direct connection uses the `postgres` role,
-// which BYPASSES RLS (like service_role). Enforce authorization in your Go code,
+// Example queries with pgx. IMPORTANT: a direct connection uses the `postgres` role,
+// which BYPASSES RLS (like service_role). Either enforce authorization in your Go code,
 // or set the role/JWT per request to honor RLS (see 11.4).
 package store
 
@@ -1639,16 +1729,18 @@ func CreatePost(ctx context.Context, pool *pgxpool.Pool, authorID, title, body s
 }
 ```
 
-> **⚡ Direct DB role bypasses RLS.** When you connect as `postgres` (the default for the connection string), **RLS does not apply** — you're a superuser-ish role. That's powerful and dangerous: your Go code is now solely responsible for authorization, *unless* you explicitly run as the user (11.4).
+> **🚨 Direct DB role bypasses RLS.** When you connect as `postgres` (the default for the connection string), **RLS does not apply** — you are a superuser-ish role, like `service_role`. That's powerful and dangerous: your Go code is now *solely* responsible for authorization, unless you explicitly run as the user (11.4). Treat every direct-connection handler as if it holds the master key.
 
-### 11.2 (b) Verifying Supabase Auth JWTs in Go
+### 11.2 (b) Verifying Supabase Auth JWTs in Go **[A]**
 
-Your Next.js app (or any client) sends `Authorization: Bearer <access_token>`. Your Go API verifies it to learn the user id (`sub`) and claims. Two signing schemes exist in 2026:
+When your Next.js app (or any client) calls your Go API, it sends `Authorization: Bearer <access_token>`. Your Go code **verifies** that token to learn the user id (`sub`) and claims, *without* a database round-trip — that's the beauty of a signed JWT. There are two signing schemes in 2026:
 
 | Scheme | Algorithm | How to verify | When |
 |---|---|---|---|
-| **Legacy / shared secret** | **HS256** | Use the project's **JWT Secret** (Settings → API) as the HMAC key | Older projects, or projects still on symmetric signing |
-| **Asymmetric signing keys** | **RS256 / ES256** | Fetch the project's **JWKS** (`<url>/auth/v1/.well-known/jwks.json`) and verify with the public key | Newer projects (2025+); lets you verify without sharing a secret |
+| **Legacy / shared secret** | **HS256** | Use the project's **JWT Secret** (Settings → API) as the HMAC key | Older projects, or those still on symmetric signing |
+| **Asymmetric signing keys** | **RS256 / ES256** | Fetch the project's **JWKS** (`<url>/auth/v1/.well-known/jwks.json`) and verify with the public key | Newer projects (2025+); verify without sharing a secret |
+
+The asymmetric path is strictly better when available: the *public* key verifies tokens, so your Go service never holds a secret that could leak, and key rotation is automatic via JWKS.
 
 ```bash
 go get github.com/golang-jwt/jwt/v5
@@ -1669,10 +1761,10 @@ import (
 
 // SupabaseClaims models the claims Supabase puts in the access token.
 type SupabaseClaims struct {
-	Email       string                 `json:"email"`
-	Role        string                 `json:"role"` // 'authenticated' / 'anon'
-	AppMetadata map[string]interface{} `json:"app_metadata"`
-	jwt.RegisteredClaims                              // includes Subject (sub), ExpiresAt, Audience…
+	Email                string                 `json:"email"`
+	Role                 string                 `json:"role"` // 'authenticated' / 'anon'
+	AppMetadata          map[string]interface{} `json:"app_metadata"`
+	jwt.RegisteredClaims                        // includes Subject (sub), ExpiresAt, Audience…
 }
 
 // VerifyHS256 validates a Supabase access token signed with the project's JWT secret.
@@ -1719,7 +1811,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// jwks is created once at startup; it auto-refreshes the public keys in the background.
+// NewJWKS is created once at startup; it auto-refreshes the public keys in the background.
 //   url = https://<ref>.supabase.co/auth/v1/.well-known/jwks.json
 func NewJWKS(ctx context.Context, jwksURL string) (keyfunc.Keyfunc, error) {
 	return keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
@@ -1731,7 +1823,7 @@ func VerifyJWKS(tokenString string, jwks keyfunc.Keyfunc) (*SupabaseClaims, erro
 	token, err := jwt.ParseWithClaims(
 		tokenString, claims, jwks.Keyfunc,
 		jwt.WithAudience("authenticated"),
-		// Accept the asymmetric algorithms Supabase may use.
+		// Accept only the asymmetric algorithms Supabase may use.
 		jwt.WithValidMethods([]string{"RS256", "ES256"}),
 	)
 	if err != nil {
@@ -1744,7 +1836,7 @@ func VerifyJWKS(tokenString string, jwks keyfunc.Keyfunc) (*SupabaseClaims, erro
 }
 ```
 
-> **⚡ Which one?** Check **Settings → API / JWT Keys** in your dashboard. If your project shows a single "JWT Secret" you're on HS256. If it shows asymmetric **signing keys** with a JWKS endpoint, prefer JWKS verification (no secret to leak; rotation is automatic). A robust backend can try JWKS first and fall back to HS256 during a migration window.
+> **⚡ Which one?** Check **Settings → API / JWT Keys** in your dashboard. A single "JWT Secret" → HS256. Asymmetric **signing keys** with a JWKS endpoint → prefer JWKS verification (no secret to leak; rotation is automatic). A robust backend can try JWKS first and fall back to HS256 during a migration window.
 
 #### Auth middleware (net/http) extracting `sub` & claims
 
@@ -1804,7 +1896,7 @@ func Claims(ctx context.Context) (*SupabaseClaims, bool) {
 	return v, ok
 }
 
-// Example role check using app_metadata.role
+// Example role check using app_metadata.role (server-set, trusted)
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, ok := Claims(r.Context())
@@ -1874,9 +1966,9 @@ func main() {
 }
 ```
 
-### 11.3 (c) Calling PostgREST / Storage / Auth over HTTP from Go
+### 11.3 (c) Calling PostgREST / Storage / Auth over HTTP from Go **[A]**
 
-Sometimes you want to reuse PostgREST's filtering/RLS rather than write SQL. Hit the REST API directly.
+Sometimes you'd rather reuse PostgREST's filtering and RLS than hand-write SQL. Hit the REST API directly with `net/http`.
 
 ```go
 package rest
@@ -1891,7 +1983,7 @@ import (
 )
 
 // GetPosts calls PostgREST. Passing the USER's JWT means RLS applies as that user.
-// Passing the service_role key bypasses RLS (server-only, use sparingly).
+// Passing the service_role key instead bypasses RLS (server-only, use sparingly).
 func GetPosts(ctx context.Context, userJWT string) ([]map[string]any, error) {
 	base := os.Getenv("SUPABASE_URL") // https://<ref>.supabase.co
 	anon := os.Getenv("SUPABASE_ANON_KEY")
@@ -1902,7 +1994,7 @@ func GetPosts(ctx context.Context, userJWT string) ([]map[string]any, error) {
 
 	// apikey = the anon (or service_role) key. Authorization = the per-user JWT for RLS.
 	req.Header.Set("apikey", anon)
-	req.Header.Set("Authorization", "Bearer "+userJWT) // use anon key here too if no user
+	req.Header.Set("Authorization", "Bearer "+userJWT) // use the anon key here too if no user
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -1919,11 +2011,10 @@ func GetPosts(ctx context.Context, userJWT string) ([]map[string]any, error) {
 }
 ```
 
-Storage over HTTP (download a private object with service_role):
-
 ```go
-// GET /storage/v1/object/<bucket>/<path>   (authenticated/service_role)
-// GET /storage/v1/object/public/<bucket>/<path>  (public buckets, no auth)
+// Storage over HTTP (download a private object with service_role):
+// GET /storage/v1/object/<bucket>/<path>          (authenticated/service_role)
+// GET /storage/v1/object/public/<bucket>/<path>   (public buckets, no auth)
 func DownloadObject(ctx context.Context, bucket, path string) ([]byte, error) {
 	base := os.Getenv("SUPABASE_URL")
 	key := os.Getenv("SUPABASE_SERVICE_ROLE_KEY") // server-only
@@ -1942,9 +2033,8 @@ func DownloadObject(ctx context.Context, bucket, path string) ([]byte, error) {
 }
 ```
 
-Auth Admin API over HTTP (assign a role via `app_metadata`, server-only):
-
 ```go
+// Auth Admin API over HTTP (assign a role via app_metadata, server-only):
 // PUT /auth/v1/admin/users/<id>  with service_role — sets trusted app_metadata.
 func SetUserRole(ctx context.Context, userID, role string) error {
 	base := os.Getenv("SUPABASE_URL")
@@ -1968,14 +2058,22 @@ func SetUserRole(ctx context.Context, userID, role string) error {
 	}
 	return nil
 }
-// (strings_NewReader = bytes.NewReader(payload) — shown inline for clarity)
 ```
 
-### 11.4 (d) Respecting RLS from Go (running queries AS the user)
+### 11.4 (d) Respecting RLS from Go (running queries AS the user) **[A]**
 
-If you want Postgres — not your Go code — to enforce authorization even on a direct `pgx` connection, run each request inside a transaction that **assumes the `authenticated` role and sets the JWT claims**, mimicking what PostgREST does. Then `auth.uid()` works and policies apply.
+This is the elegant move that unifies the architecture. If you want Postgres — not your Go code — to enforce authorization even over a direct `pgx` connection, run each request inside a transaction that **assumes the `authenticated` role and sets the JWT claims**, exactly mimicking what PostgREST does internally. Then `auth.uid()` resolves and your existing RLS policies apply automatically. You write security *once* (in RLS) and both JS and Go honor it.
 
 ```go
+package db
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
 // WithUserRLS runs fn inside a tx where Postgres sees the request as the given user,
 // so RLS policies (auth.uid(), auth.jwt()) are enforced — just like via PostgREST.
 func WithUserRLS(ctx context.Context, pool *pgxpool.Pool, jwtClaimsJSON string, fn func(pgx.Tx) error) error {
@@ -1989,8 +2087,8 @@ func WithUserRLS(ctx context.Context, pool *pgxpool.Pool, jwtClaimsJSON string, 
 	if _, err := tx.Exec(ctx, `set local role authenticated`); err != nil {
 		return err
 	}
-	// 2) Provide the JWT claims so auth.uid()/auth.jwt() resolve.
-	//    request.jwt.claims is the GUC PostgREST sets; auth.uid() reads sub from it.
+	// 2) Provide the JWT claims so auth.uid()/auth.jwt() resolve. request.jwt.claims is
+	//    the GUC PostgREST sets; auth.uid() reads 'sub' out of it.
 	if _, err := tx.Exec(ctx, `select set_config('request.jwt.claims', $1, true)`, jwtClaimsJSON); err != nil {
 		return err
 	}
@@ -2003,7 +2101,7 @@ func WithUserRLS(ctx context.Context, pool *pgxpool.Pool, jwtClaimsJSON string, 
 ```
 
 ```go
-// Usage: claims JSON must at least contain {"sub":"<user-uuid>","role":"authenticated"}.
+// Usage: the claims JSON must contain at least {"sub":"<user-uuid>","role":"authenticated"}.
 claimsJSON := fmt.Sprintf(`{"sub":%q,"role":"authenticated"}`, userID)
 err := WithUserRLS(ctx, pool, claimsJSON, func(tx pgx.Tx) error {
 	// This SELECT is now filtered by the table's RLS policies for that user.
@@ -2013,9 +2111,9 @@ err := WithUserRLS(ctx, pool, claimsJSON, func(tx pgx.Tx) error {
 })
 ```
 
-> **`set local`** scopes the role/config to the current transaction only, so a pooled connection reverts cleanly afterward. This is the safe way to honor RLS over a shared pool.
+> **Why `set local`?** It scopes the role/config to the current transaction only, so when the connection returns to the pool it reverts cleanly — no leakage of one user's identity onto the next request. This is the safe way to honor RLS over a shared pool.
 
-### 11.5 When to use the JS client vs direct DB from Go
+### 11.5 When to use the JS client vs direct DB from Go **[A]**
 
 | Situation | Recommendation |
 |---|---|
@@ -2023,23 +2121,23 @@ err := WithUserRLS(ctx, pool, claimsJSON, func(tx pgx.Tx) error {
 | Complex queries, transactions, joins, batch jobs, performance | **Go + `pgx` direct** (write SQL). |
 | Go API that must authenticate users | **Verify the JWT** (11.2) and trust `sub`. |
 | Want one authorization model (RLS) enforced even in Go | **Direct `pgx` + run-as-user tx** (11.4) or **call PostgREST with the user JWT** (11.3c). |
-| Privileged admin operations from Go | **service_role** via Admin API / direct DB (server-only, audited). |
+| Privileged admin operations from Go | **service_role** via the Admin API / direct DB (server-only, audited). |
 | Need to call from Go but don't want to write SQL | **PostgREST over HTTP** (11.3c). |
 
-> **Common production shape:** Next.js uses supabase-js for the bulk of UI CRUD (RLS does the security), while a Go service handles heavy lifting (background processing, integrations, complex transactional logic) by connecting with `pgx`, verifying user JWTs for any user-facing endpoints, and using `service_role`/direct DB for trusted operations.
+> **Common production shape:** Next.js uses supabase-js for the bulk of UI CRUD (RLS does the security), while a Go service handles heavy lifting — background processing, integrations, complex transactional logic — by connecting with `pgx`, verifying user JWTs for any user-facing endpoint, and using `service_role`/direct DB only for trusted operations. The shared RLS model keeps both paths consistent.
 
 ---
 
 ## 12. pgvector / AI: Embeddings & Semantic Search
 
-Supabase ships **pgvector**, turning Postgres into a vector store for semantic search and RAG. Relevant in 2026 for AI features.
+Supabase ships **pgvector**, the Postgres extension that turns your database into a vector store for **semantic search** and **RAG** (retrieval-augmented generation). The idea: an embedding model converts text (or images) into a high-dimensional vector where *semantically similar* content lands close together; you store those vectors in a column and query "find the nearest vectors to this one" to retrieve by *meaning* rather than keywords. In 2026 this is how you build "search that understands intent" and how you feed relevant context to an LLM.
 
 ```sql
 -- Enable the extension
 create extension if not exists vector;
 
 -- A documents table with an embedding column.
--- Dimension must match your embedding model (e.g. 1536 for many models, 768/1024 for others).
+-- The dimension MUST match your embedding model exactly (e.g. 1536, or 768/1024 for others).
 create table documents (
   id bigint generated always as identity primary key,
   content text not null,
@@ -2053,15 +2151,15 @@ create policy "owner rw documents" on documents
   using ((select auth.uid()) = owner_id)
   with check ((select auth.uid()) = owner_id);
 
--- Index for fast approximate nearest-neighbor search.
+-- Index for fast approximate nearest-neighbor (ANN) search.
 -- HNSW (recommended) with cosine distance:
 create index on documents using hnsw (embedding vector_cosine_ops);
--- (Alternative: IVFFlat — create index ... using ivfflat (embedding vector_cosine_ops) with (lists = 100);)
+-- Alternative: IVFFlat — using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 ```
 
-Distance operators: `<->` (L2/Euclidean), `<#>` (negative inner product), `<=>` (cosine distance).
+The distance operators (pick the one matching how your model was trained): `<->` (L2/Euclidean), `<#>` (negative inner product), `<=>` (cosine distance). Most text-embedding models use **cosine**.
 
-A `security definer`-free RPC to find similar documents:
+A function to find the most similar documents — note RLS still applies, so users only ever match their own documents:
 
 ```sql
 create or replace function match_documents(
@@ -2093,71 +2191,69 @@ const { data: matches } = await supabase.rpc("match_documents", {
 });
 ```
 
-Inserting an embedding (from a server context where you computed it):
-
 ```ts
+// Inserting an embedding (from a server context where you computed it):
 await supabase.from("documents").insert({
   content: text,
   embedding: embedding, // number[] — supabase-js serializes to a pgvector literal
 });
 ```
 
-> **Tips:** match the `vector(N)` dimension to your model exactly; normalize vectors if your model expects it; use **HNSW** for most workloads (better recall/speed, no training); combine vector search with regular SQL filters/RLS in the same query for hybrid search.
+> **Tips:** match the `vector(N)` dimension to your model exactly (a mismatch errors); normalize vectors if your model expects it; prefer **HNSW** for most workloads (better recall/speed, no training step); and remember you can combine vector search with ordinary SQL filters *and* RLS in the same query — that's "hybrid search," and it's a key advantage of doing vectors *in* your relational database rather than a separate vector DB.
 
 ---
 
 ## 13. Security Best Practices
 
-A consolidated checklist — most breaches with Supabase come from violating these.
+A consolidated checklist — most Supabase breaches come from violating one of these. Re-read it before every launch.
 
 1. **Never expose `service_role` to a client.** Not in the browser, not in mobile apps, not in `NEXT_PUBLIC_*`, not in a public repo. It bypasses RLS = full data access. Server-only.
 2. **Enable RLS on every table reachable via the API**, and write explicit policies. RLS off = wide open. RLS on with no policies = safe deny-all.
 3. **Use `getUser()` (not `getSession()`) for server-side authorization.** `getSession()` is unverified cookie data.
 4. **Verify JWTs in your Go backend** — pin the algorithm (`WithValidMethods`), check `aud="authenticated"`, never accept `alg=none`. Prefer JWKS (asymmetric) where available.
 5. **`security definer` functions: always `set search_path = ''`** and keep them minimal; revoke `execute` from `public`/`anon` if not needed.
-6. **Put authorization data in `app_metadata` (server-set), never `user_metadata`** (user-editable). Don't trust user_metadata in policies.
-7. **Scope every `update`/`delete`** with a filter; treat unfiltered mutations as a bug.
+6. **Put authorization data in `app_metadata` (server-set), never `user_metadata`** (user-editable). Don't trust `user_metadata` in policies.
+7. **Scope every `update`/`delete`** with a filter; treat an unfiltered mutation as a bug.
 8. **Lock down Auth redirect URLs** (Site URL + allow-list) to prevent open-redirect / token theft.
 9. **Manage secrets properly** — Edge Function secrets via `supabase secrets`, Go via env/secret manager. Rotate the DB password and keys if leaked.
-10. **Storage: private buckets + per-folder RLS + signed URLs** for anything sensitive; don't dump private files in public buckets.
-11. **Rate-limit and validate** in Edge Functions / Go for public endpoints; verify provider signatures for webhooks (deployed `--no-verify-jwt`).
-12. **Run the dashboard's Security Advisor / linter** — it flags tables with RLS disabled, exposed definer functions, and missing policies.
+10. **Storage: private buckets + per-folder RLS + signed URLs** for anything sensitive; never dump private files in public buckets.
+11. **Rate-limit and validate** in Edge Functions / Go for public endpoints; verify provider signatures for webhooks deployed with `--no-verify-jwt`.
+12. **Run the dashboard's Security Advisor** — it flags tables with RLS disabled, exposed definer functions, and missing policies. Make it part of your release checklist.
 
 ---
 
 ## 14. Self-Hosting & Pricing/Limits Awareness
 
-### 14.1 Self-hosting
+### 14.1 Self-hosting **[I]**
 
-Supabase is **open source** and self-hostable (you own the whole stack). The standard path is **Docker Compose**:
+Because Supabase is **open source**, you can run the entire stack yourself — useful for data-residency/compliance, cost at very large scale, or air-gapped environments. The standard path is **Docker Compose** (see `DOCKER_GUIDE.md` for the container fundamentals).
 
 ```bash
-# Clone the repo and use the docker setup
 git clone --depth 1 https://github.com/supabase/supabase
 cd supabase/docker
 cp .env.example .env        # set POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY, SITE_URL...
 docker compose up -d        # starts Postgres, GoTrue, PostgREST, Realtime, Storage, Studio, Kong...
 ```
 
-What you run yourself: **Kong** (API gateway), **GoTrue**, **PostgREST**, **Realtime**, **Storage API**, **Studio**, **Postgres** (+ `pg_meta`), and an analytics/logging stack. You generate your own `JWT_SECRET` and derive matching `ANON_KEY`/`SERVICE_ROLE_KEY` JWTs. Trade-off: full control & no usage fees, but you own upgrades, backups, scaling, HA, and security patching.
+What you run yourself: **Kong** (API gateway), **GoTrue**, **PostgREST**, **Realtime**, **Storage API**, **Studio**, **Postgres** (+ `pg_meta`), and a logging/analytics stack. You generate your own `JWT_SECRET` and derive matching `ANON_KEY`/`SERVICE_ROLE_KEY` JWTs from it. The trade-off is total control and no usage fees, but you now own upgrades, backups, scaling, HA, and security patching.
 
-> Self-host for data-residency/compliance, cost at scale, or air-gapped environments. For most teams, hosted is far less operational burden. The same client code works against either — only the URL/keys change.
+> For most teams, hosted is far less operational burden, and the same client code works against either — only the URL/keys change. Self-host when a hard requirement (compliance, air-gap, scale economics) forces it.
 
-### 14.2 Pricing & limits awareness (concepts, not exact figures)
+### 14.2 Pricing & limits awareness (concepts, not exact figures) **[B]**
 
-Plans roughly: **Free** (great for dev/small projects; projects may pause after inactivity), **Pro** (production baseline + higher limits + daily backups + add-ons), **Team** (collaboration/SOC2-style needs), **Enterprise** (custom). Things that consume quota / drive cost:
+Plans roughly: **Free** (great for dev/small projects; idle projects may be paused), **Pro** (production baseline + higher limits + daily backups + add-ons), **Team** (collaboration/compliance needs), **Enterprise** (custom). What consumes quota / drives cost:
 
 | Dimension | Notes |
 |---|---|
 | **Database size / disk** | Grows with data; disk is provisioned/auto-scaled on paid plans. |
-| **Egress / bandwidth** | API + Storage + Realtime data transfer. |
-| **Storage** | GB stored + transformations. |
-| **Monthly active users (MAU)** | Auth pricing tier dimension. |
-| **Edge Function invocations** | Per-invocation/compute. |
+| **Egress / bandwidth** | API + Storage + Realtime data transfer — watch this on media-heavy apps. |
+| **Storage** | GB stored + image transformations. |
+| **Monthly active users (MAU)** | The Auth pricing dimension. |
+| **Edge Function invocations** | Per-invocation / compute. |
 | **Realtime** | Concurrent connections + messages. |
-| **Compute add-ons** | Bigger instance sizes, read replicas, dedicated pooler. |
+| **Compute add-ons** | Bigger instances, read replicas, dedicated pooler. |
 
-> **⚡ Always check the current pricing page for exact numbers** — tiers and limits change. The actionable takeaways: enable backups on production, watch egress on media-heavy apps, and remember Free-tier projects can be paused if idle.
+> **⚡ Always check the current pricing page for exact numbers** — tiers and limits change. Actionable takeaways: enable backups on production, watch egress on media-heavy apps, and remember Free-tier projects can be paused when idle.
 
 ---
 
@@ -2169,7 +2265,7 @@ Plans roughly: **Free** (great for dev/small projects; projects may pause after 
 | **RLS on but no policies** | Nothing works (deny-all) — *this is correct/safe*; add policies deliberately. |
 | **`auth.uid()` per-row in policies** | Slow on big tables. Wrap as `(select auth.uid())` so it evaluates once. |
 | **`getSession()` on the server** | Unverified — use `getUser()` for any auth decision server-side. |
-| **No middleware in Next.js** | Sessions don't refresh → random logouts. The §6.3 middleware is mandatory. |
+| **No middleware in Next.js** | Sessions don't refresh → random logouts. The §6.4 middleware is mandatory. |
 | **New `NextResponse` in middleware** | Drops refreshed cookies → logout. Return the `supabaseResponse` (or copy cookies). |
 | **`service_role` in `NEXT_PUBLIC_`** | Full data breach. Service role is server-only, never public. |
 | **Transaction-pooler (6543) + prepared statements** | `pgx`/`lib/pq` error. Use simple protocol / disable statement cache, or use session/direct mode. |
@@ -2177,8 +2273,8 @@ Plans roughly: **Free** (great for dev/small projects; projects may pause after 
 | **Unfiltered `update`/`delete`** | Mutates all RLS-visible rows. Always add a filter. |
 | **`.single()` on 0 or many rows** | Errors. Use `.maybeSingle()` when the row may be absent. |
 | **Realtime table not in publication** | No events. `alter publication supabase_realtime add table ...`. |
-| **Realtime without a SELECT policy** | Clients receive no change events (RLS blocks them). Add SELECT policy. |
-| **`security definer` without `set search_path`** | Function hijack vulnerability. Always pin `search_path = ''`. |
+| **Realtime without a SELECT policy** | Clients receive no change events (RLS blocks them). Add a SELECT policy. |
+| **`security definer` without `set search_path`** | Function-hijack vulnerability. Always pin `search_path = ''`. |
 | **`alg=none` / algorithm confusion in Go JWT** | Always pass `jwt.WithValidMethods([...])` and check the method type. |
 | **Trusting `user_metadata` for roles** | User can edit it. Use server-set `app_metadata`. |
 | **Wrong `vector(N)` dimension** | Inserts/queries fail or mismatch. Match the embedding model exactly. |
@@ -2186,6 +2282,8 @@ Plans roughly: **Free** (great for dev/small projects; projects may pause after 
 | **Email confirm enabled but unhandled** | `signUp` returns no session; show "check your email". |
 | **Storage path not user-prefixed** | Per-user RLS via `storage.foldername(name)[1]` won't work. Name files `"<uid>/..."`. |
 | **Missing Auth redirect allow-list** | OAuth/magic-link redirects fail or are unsafe. Configure Site URL + allowed redirects. |
+| **Pagination without `.order()`** | Pages overlap/skip rows. Always order before `.range()`. |
+| **Ignoring `{ error }`** | Silent failures. Check `error` on every call or use `.throwOnError()`. |
 
 **General best practices:**
 - Keep schema in **migrations**; never hand-edit production schema untracked.
@@ -2217,6 +2315,6 @@ Plans roughly: **Free** (great for dev/small projects; projects may pause after 
 
 **Project B — "Realtime chat with a Go moderation API" (Next.js + Go, one Supabase project).** Next.js handles auth and the chat UI (Realtime Postgres Changes for messages). A **Go service** connects via `pgx` for heavy queries, **verifies the Supabase JWT** on its endpoints (extract `sub`), exposes an admin-only `/moderate` endpoint (role from `app_metadata`), and uses the **run-as-user transaction** pattern so RLS is honored even from Go. Goal: master §11 end to end — the shared-authorization-model architecture.
 
-**Project C — "Semantic doc search" (pgvector + Edge Function).** Upload documents to Storage, an Edge Function (or Go service) computes embeddings and stores them in a `documents` table with HNSW index, and a search page calls `match_documents` for RAG-style results — all scoped by RLS. Goal: master §9 and §12.
+**Project C — "Semantic doc search" (pgvector + Edge Function).** Upload documents to Storage, an Edge Function (or Go service) computes embeddings and stores them in a `documents` table with an HNSW index, and a search page calls `match_documents` for RAG-style results — all scoped by RLS. Goal: master §9 and §12.
 
-> Build all three against a single Supabase project and you'll have touched every service, both client paths (JS + Go), and the security model that ties them together. That's a complete, production-grade mental model of Supabase as of 2026.
+> Build all three against a single Supabase project and you will have touched every service, both client paths (JS + Go), and the security model that ties them together. That's a complete, production-grade mental model of Supabase as of 2026 — and a portfolio that demonstrates the full-stack, multi-runtime architecture most teams actually run.
