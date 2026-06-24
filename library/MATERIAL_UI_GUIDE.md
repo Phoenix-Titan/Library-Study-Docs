@@ -1,98 +1,133 @@
-# Material UI (MUI) — Comprehensive Offline Reference Guide (2026)
+# Material UI (MUI) — Beginner to Advanced — Complete Offline Reference
 
-> **What MUI is:** A production-ready React component library that implements Google's **Material Design** specification. You install it via npm, import ready-made components, and customize through a powerful **theming system**. Unlike shadcn/ui, you do NOT own the source — MUI components are versioned npm packages. Current stable major: **MUI v6** (`@mui/material@6`), with **v7** in active development. The styling engine is **Emotion** (CSS-in-JS) by default, with an experimental **Pigment CSS** zero-runtime compiler coming for v7.
+> **Who this is for:** Anyone going from "I've added a `<Button>` once" to "I architect a themed, accessible, performant MUI app in React 19 or Next.js" — with no internet connection. Every concept is explained in *prose first*: **what it is**, **the logic/why it works this way**, **what it's for and when to reach for it**, **how to use it**, its **key props**, **best practices**, and the **gotchas** that bite people — and *then* a heavily-commented, runnable code block. Read top-to-bottom the first time; afterwards use the Table of Contents as a reference. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
+>
+> **Version note:** This guide targets **MUI v6 and v7** (`@mui/material@6` / `@mui/material@7`), **React 19**, and the ecosystem as it stands in **2026**. Key facts worth knowing up front:
+> - **MUI v7** (released 2025) is a mostly-incremental upgrade over v6: ESM-first package layout, the **Grid** rewrite is now the default `Grid` (the old `Grid2` name is gone), and improved tree-shaking. The component API you learn here is identical across v6/v7 except where flagged.
+> - **CSS variables / `colorSchemes`** is the modern theming + dark-mode mechanism (stable since v6). It eliminates the SSR dark-mode flash.
+> - **Pigment CSS** — a zero-runtime CSS-in-JS compiler — is the long-term direction to replace Emotion's runtime cost, but as of 2026 it is still opt-in/experimental. The default engine is **Emotion**, and that is what this guide assumes.
+> - **React 19** is fully supported. The new `ref`-as-a-prop and Actions/`useActionState` features interoperate cleanly with MUI inputs (see §11).
+>
+> Where behaviour is version-sensitive it is flagged with **⚡ Version note**. The author is on **Windows 11**; shell commands are shown for npm. Confirm exact prop names at `mui.com` when you next have internet — MUI's docs have superb live prop tables.
+>
+> **Cross-references:** This guide assumes React fundamentals from `REACT_19_GUIDE.md`. The Next.js integration in §3 pairs with `NEXTJS_16_GUIDE.md`. Form handling in §11 builds on `REACT_HOOK_FORM_GUIDE.md`. For the "why pick MUI vs the alternatives" discussion see `SHADCN_UI_CHEATSHEET.md` and `TAILWIND_CHEATSHEET.md`.
 
 ---
 
 ## Table of Contents
 
-1. [What MUI Is — Packages & Architecture](#1-what-mui-is--packages--architecture)
-2. [Setup & Install](#2-setup--install)
-3. [Next.js App Router Setup](#3-nextjs-app-router-setup)
-4. [Theming — createTheme, ThemeProvider, Palette, Typography, Spacing](#4-theming)
-5. [The `sx` Prop — The Primary Styling Tool](#5-the-sx-prop)
-6. [Styling Approaches: sx vs styled() vs Theme Overrides](#6-styling-approaches)
-7. [Layout Components: Box, Container, Stack, Grid](#7-layout-components)
-8. [Core Component Reference](#8-core-component-reference)
-   - [Text & Display](#text--display)
-   - [Inputs & Forms](#inputs--forms)
-   - [Data Display](#data-display)
-   - [Navigation](#navigation)
-   - [Feedback & Overlays](#feedback--overlays)
-9. [Icons — @mui/icons-material](#9-icons----muiicons-material)
-10. [DataGrid — @mui/x-data-grid](#10-datagrid----muix-data-grid)
-11. [Forms with MUI — Controlled Inputs & react-hook-form](#11-forms-with-mui)
-12. [Dark Mode & Theme Toggling](#12-dark-mode--theme-toggling)
-13. [Responsive Design — Breakpoints & useMediaQuery](#13-responsive-design)
-14. [Performance, Tips, Tricks & Gotchas](#14-performance-tips-tricks--gotchas)
-15. [Study Path](#15-study-path)
+1. [What MUI Is & When to Choose It](#1-what-mui-is--when-to-choose-it) **[B]**
+2. [Setup & Install](#2-setup--install) **[B]**
+3. [Next.js App Router Setup](#3-nextjs-app-router-setup) **[I]**
+4. [Theming In Depth](#4-theming-in-depth) **[I/A]**
+5. [The `sx` Prop](#5-the-sx-prop) **[B/I]**
+6. [Styling Approaches: sx vs styled vs Overrides](#6-styling-approaches-sx-vs-styled-vs-overrides) **[I]**
+7. [The Layout System: Box, Container, Stack, Grid](#7-the-layout-system-box-container-stack-grid) **[B/I]**
+8. [Core Component Reference](#8-core-component-reference) **[B/I]**
+9. [Icons — @mui/icons-material](#9-icons--muiicons-material) **[B]**
+10. [DataGrid — @mui/x-data-grid](#10-datagrid--muix-data-grid) **[A]**
+11. [Forms with MUI + React Hook Form](#11-forms-with-mui--react-hook-form) **[I/A]**
+12. [Dark Mode & Theme Toggling](#12-dark-mode--theme-toggling) **[I]**
+13. [Responsive Design](#13-responsive-design) **[I]**
+14. [Performance, Tips & Gotchas](#14-performance-tips--gotchas) **[A]**
+15. [Study Path & Build-to-Learn Projects](#15-study-path--build-to-learn-projects)
 
 ---
 
-## 1. What MUI Is — Packages & Architecture
+## 1. What MUI Is & When to Choose It
 
-### The Package Ecosystem
+### What it is
 
-| Package | Purpose | Install |
+**Material UI (MUI)** is a React component library: a versioned set of pre-built, accessible, styleable components (`Button`, `TextField`, `Dialog`, `DataGrid`, and ~70 more) that you install from npm and import into your app. It implements Google's **Material Design** language by default — the elevation shadows, the ripple effect on click, the floating labels on text fields — but every visual token is overridable through a central **theme**, so you are not locked into looking "Google-y."
+
+The mental model that matters most: **you do not own the component source.** When you `npm install @mui/material`, you get compiled, versioned components. You customize them from the *outside* — via props, the `sx` prop, `styled()`, and theme overrides — not by editing their code. This is the fundamental philosophical split from `shadcn/ui`, where the CLI copies component source *into your repo* and you own and edit it directly.
+
+### The logic / why it works this way
+
+MUI's architecture rests on three pillars:
+
+1. **A central theme as the single source of truth.** Colors, fonts, spacing, breakpoints, and per-component defaults all live in one `theme` object you pass to a `ThemeProvider`. Change `primary.main` once and every button, link, and focused input updates. This is the opposite of scattering hardcoded hex values across hundreds of files.
+2. **CSS-in-JS via Emotion.** Every component's styles are generated as scoped CSS classes at runtime by the Emotion engine. This gives you dynamic, theme-aware, prop-driven styling with no global CSS collisions — at the cost of a runtime that must run in the browser (which is why SSR needs special handling, §3).
+3. **Accessibility built in.** Focus management, ARIA roles, keyboard navigation, and screen-reader labels are handled inside the components. A `<Dialog>` traps focus and restores it on close; a `<Select>` is keyboard-navigable. You get this for free, which is a large part of MUI's value.
+
+### When to choose MUI — and when not to
+
+This is the decision every team faces. Here is the honest trade-off table:
+
+| Library | Model | Best when | Trade-offs |
+|---|---|---|---|
+| **MUI** | Installed npm package, themed centrally | You want a *complete* component set fast (data grids, date pickers, autocomplete), a centralized theme, and built-in a11y. Internal tools, dashboards, admin panels, B2B SaaS. | Larger bundle; Emotion runtime cost; default look is recognizably "Material"; deep customization fights the defaults. |
+| **shadcn/ui** | Source copied into your repo (you own it) | You want full control over markup, a Tailwind-native workflow, and a modern minimal aesthetic. Marketing sites, design-forward products. | You maintain the code; no premium data grid; more assembly required. See `SHADCN_UI_CHEATSHEET.md`. |
+| **Tailwind (alone)** | Utility CSS, no components | Maximum design freedom, smallest runtime, you build components yourself. | You build *everything* (modals, comboboxes, a11y) from scratch. See `TAILWIND_CHEATSHEET.md`. |
+| **Chakra UI** | Installed npm package, themed | Similar to MUI but lighter, less opinionated visually, great DX. | Smaller component catalog than MUI (no first-party data grid of MUI's depth). |
+
+**Choose MUI when:** you need breadth and speed, especially data-heavy UIs. The `DataGrid` (§10) and date pickers alone justify it for many dashboards. The theme system scales beautifully across large teams because design decisions are centralized.
+
+**Avoid MUI when:** bundle size is critical (a content site that must hit a Lighthouse 100), you want a non-Material aesthetic with minimal fighting, or your team is already deep in Tailwind and wants to own their markup.
+
+> **Gotcha — "MUI looks like Google."** New users complain everything looks like a Google product. That is the *default* theme, not a limitation. With 30 minutes of theming (§4) — your brand palette, your border radius, `textTransform: 'none'` on buttons, a custom font — it stops looking like Material and starts looking like *yours*.
+
+### The package ecosystem
+
+You rarely install just one package. Here is the map:
+
+| Package | Purpose | Required? |
 |---|---|---|
-| `@mui/material` | Core component library (Button, TextField, etc.) | Required |
-| `@mui/icons-material` | 2,000+ SVG icons as React components | Optional |
-| `@mui/x-data-grid` | Feature-rich data table (community edition free) | Optional |
-| `@mui/x-date-pickers` | Date/time picker components | Optional |
-| `@mui/lab` | Incubator for experimental components (MaskedInput, etc.) | Optional |
-| `@mui/system` | Low-level `Box`, `sx`, `styled` utilities (bundled with material) | Included |
-| `@emotion/react` | CSS-in-JS runtime (peer dependency) | Required |
-| `@emotion/styled` | `styled()` API (peer dependency) | Required |
+| `@mui/material` | Core components (Button, TextField, Dialog, …) | **Yes** |
+| `@emotion/react`, `@emotion/styled` | The CSS-in-JS engine (peer deps) | **Yes** (with default engine) |
+| `@mui/icons-material` | 2,100+ SVG icons as React components | Very common |
+| `@mui/x-data-grid` | Feature-rich data table (community = free; Pro/Premium = paid) | Optional |
+| `@mui/x-date-pickers` | Date/time pickers | Optional |
+| `@mui/lab` | Incubator for not-yet-stable components | Optional |
+| `@mui/system` | Low-level `Box`/`sx`/`styled` utilities (bundled into material) | Included |
+| `@mui/material-nextjs` | Next.js SSR style-extraction helpers | Next.js only |
 
-### Material Design Foundation
-
-MUI implements **Material Design 3** (Material You) design tokens — elevation, shape, color roles (primary, secondary, error, warning, info, success), and motion. You are not required to follow Material Design strictly; the theme is fully overridable.
-
-### The Styling Engine: Emotion
-
-By default every MUI component is styled with **Emotion**. When you write:
-
-```tsx
-<Button sx={{ mt: 2, color: 'primary.main' }} />
-```
-
-Emotion generates a unique CSS class at runtime, injects a `<style>` tag, and applies it. This works great in SPAs. For SSR (Next.js), you need to extract styles on the server — covered in Section 3.
-
-⚡ **Version note:** MUI v7 is introducing **Pigment CSS**, a zero-runtime CSS-in-JS tool (like Linaria/vanilla-extract) that moves style generation to build time. Pigment CSS eliminates Emotion's runtime cost but requires a bundler plugin. As of 2026, Pigment CSS is experimental — use Emotion unless you are bleeding-edge.
+> **⚡ Version note (engine):** MUI v7 keeps **Emotion** as the default but the `@mui/material` package is now ESM-first. If you hit `require()` / ESM interop errors after upgrading, it is almost always a bundler/transpiler config issue, not your code.
 
 ---
 
 ## 2. Setup & Install
 
-### Standard React / Vite Project
+### What setup actually does
+
+Three things must be true before a single MUI component renders correctly: (1) the packages are installed, (2) a `ThemeProvider` wraps your app so components can read the theme via context, and (3) `CssBaseline` is mounted so the browser's default styles are normalized and the theme's background/font are applied. Skip any one and you get either crashes, unstyled output, or a white page with mismatched fonts.
+
+### Install (Vite / Create React App / any SPA)
 
 ```bash
-# Install MUI + Emotion (peer deps)
+# Core + the Emotion engine (peer dependencies — MUI will warn if missing)
 npm install @mui/material @emotion/react @emotion/styled
 
-# Optional but very common
+# Almost always wanted:
 npm install @mui/icons-material
 
-# Optional data-grid
-npm install @mui/x-data-grid
+# Optional power-ups:
+npm install @mui/x-data-grid          # data table
+npm install @mui/x-date-pickers       # date/time pickers
 ```
 
-### Minimum App Setup
+### Minimum app wiring
+
+The provider is the heart of it. `ThemeProvider` uses React context to make the theme available to every descendant; that is *why* components deep in the tree can read `primary.main` without prop-drilling.
 
 ```tsx
-// src/main.tsx  (Vite / CRA)
+// src/main.tsx  (Vite)
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import App from './App';
 
-// createTheme with no args = MUI defaults (light mode, default palette)
+// createTheme() with no args = MUI defaults: light mode, blue primary, Roboto font.
+// Define it at MODULE scope (outside any component) so it is created ONCE, not on
+// every render — recreating the theme on each render is a classic performance bug.
 const theme = createTheme();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    {/* ThemeProvider publishes `theme` via context to all descendants */}
     <ThemeProvider theme={theme}>
-      {/* CssBaseline: CSS reset + applies background-color from theme */}
+      {/* CssBaseline: a CSS reset + applies theme background/font to <body>.
+          It renders NO markup itself — it just injects global styles. */}
       <CssBaseline />
       <App />
     </ThemeProvider>
@@ -100,34 +135,37 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 ```
 
-### Roboto Font (recommended)
+### The Roboto font (recommended, and offline-friendly)
 
-```html
-<!-- index.html — Google Fonts CDN (or install @fontsource/roboto) -->
-<link
-  rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-/>
-```
+Material Design is *designed* for Roboto; the default `theme.typography` assumes it. You can install it as an npm package so it works without internet — the right call for offline study.
 
 ```bash
-# Alternative: self-hosted font (works offline)
 npm install @fontsource/roboto
 ```
 
 ```tsx
-// Import at the top of main.tsx
+// Import the weights MUI uses, at the top of main.tsx. These resolve to local
+// CSS+font files in node_modules — no Google Fonts CDN, works fully offline.
 import '@fontsource/roboto/300.css';
 import '@fontsource/roboto/400.css';
 import '@fontsource/roboto/500.css';
 import '@fontsource/roboto/700.css';
 ```
 
+> **Best practice:** If you ship a *custom* font, set `theme.typography.fontFamily` to it (§4) AND import the font files. Setting the theme alone without loading the font gives you a silent fallback to the system font.
+
+> **Gotcha — missing Emotion peer deps.** If you install only `@mui/material` you get cryptic runtime errors. Emotion is a *peer* dependency; install `@emotion/react` and `@emotion/styled` explicitly.
+
 ---
 
 ## 3. Next.js App Router Setup
 
-Next.js App Router uses React Server Components (RSC) by default. MUI components use hooks and browser APIs, so they must render on the client. The official solution is `AppRouterCacheProvider` from `@mui/material-nextjs`.
+### The problem this solves
+
+Next.js App Router renders **React Server Components (RSC)** by default — components that run only on the server and ship zero JS. MUI components, however, rely on the Emotion runtime and (for interactive ones) React hooks and browser APIs. Two issues arise:
+
+1. **Style extraction for SSR.** Emotion generates CSS as it renders. On the server, those generated styles must be *collected* and inlined into the initial HTML; otherwise the first paint is unstyled (a "flash of unstyled content," FOUC) until the client re-runs Emotion. MUI ships `AppRouterCacheProvider` to do this collection automatically for the App Router.
+2. **The server/client boundary.** Any MUI component that uses state, effects, or event handlers must live in a file marked `'use client'`. `ThemeProvider` itself uses context (a client feature), so your theme setup is a client component.
 
 ### Install
 
@@ -135,13 +173,16 @@ Next.js App Router uses React Server Components (RSC) by default. MUI components
 npm install @mui/material @emotion/react @emotion/styled @mui/material-nextjs
 ```
 
-### Layout File
+### Root layout — the SSR cache provider
 
 ```tsx
-// app/layout.tsx  — Root layout (Server Component)
+// app/layout.tsx — a Server Component (no 'use client' here).
 import type { Metadata } from 'next';
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
-// ⚡ Version note: use 'v14-appRouter' for Next.js 14, 'v15-appRouter' for Next.js 15
+// ⚡ Version note: pick the import path that matches your Next.js major:
+//   '@mui/material-nextjs/v14-appRouter'  for Next 14
+//   '@mui/material-nextjs/v15-appRouter'  for Next 15/16 (current in 2026)
+import { Providers } from './providers';
 
 export const metadata: Metadata = { title: 'My MUI App' };
 
@@ -149,12 +190,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        {/*
-          AppRouterCacheProvider handles SSR style extraction for Emotion.
-          It MUST wrap everything — it is a server component wrapper.
-        */}
+        {/* AppRouterCacheProvider must be the OUTERMOST wrapper. It captures
+            Emotion's generated styles during the server render and inlines
+            them, preventing FOUC. */}
         <AppRouterCacheProvider>
-          {children}
+          <Providers>{children}</Providers>
         </AppRouterCacheProvider>
       </body>
     </html>
@@ -162,19 +202,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-### Client ThemeProvider
+### The client provider (theme + baseline)
 
 ```tsx
-// app/providers.tsx  — "use client" because ThemeProvider uses context
-'use client';
+// app/providers.tsx
+'use client'; // REQUIRED: ThemeProvider relies on React context, a client feature.
 
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import type { ReactNode } from 'react';
 
+// Module-scope theme — created once. With CSS variables mode (§12) this also
+// gives you a flash-free dark mode under SSR.
 const theme = createTheme({
-  palette: {
-    primary: { main: '#1976d2' },
-  },
+  cssVariables: true, // emit CSS custom properties (recommended for Next.js SSR)
+  palette: { primary: { main: '#1976d2' } },
 });
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -187,148 +228,153 @@ export function Providers({ children }: { children: ReactNode }) {
 }
 ```
 
-```tsx
-// app/layout.tsx  — Wire in the providers
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
-import { Providers } from './providers';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>
-        <AppRouterCacheProvider>
-          <Providers>{children}</Providers>
-        </AppRouterCacheProvider>
-      </body>
-    </html>
-  );
-}
-```
-
-### Using MUI Components in RSC Pages
+### Using MUI in Server vs Client components
 
 ```tsx
-// app/page.tsx — Server Component (no 'use client' needed for static content)
-// MUI components that are purely presentational CAN be imported in RSCs
-// as long as they don't use hooks internally.
-// Safer: keep interactive components in separate 'use client' files.
-
-import { Typography, Container } from '@mui/material';
-import { InteractiveSection } from './InteractiveSection'; // 'use client'
+// app/page.tsx — a Server Component. Purely presentational MUI components
+// (no hooks/handlers inside the boundary you control) render fine in RSC.
+import { Container, Typography } from '@mui/material';
+import { InteractiveSection } from './InteractiveSection'; // a 'use client' island
 
 export default function HomePage() {
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Typography variant="h1">Hello MUI + App Router</Typography>
+      {/* Static content — server-rendered, no client JS for this part */}
+      <Typography variant="h1" gutterBottom>Hello MUI + App Router</Typography>
+      {/* Interactivity is isolated in a client island */}
       <InteractiveSection />
     </Container>
   );
 }
 ```
 
-⚡ **Version note:** Many MUI components that contain `useEffect`, `useState`, or event handlers will throw "You're importing a component that needs X" in RSC. When in doubt, add `'use client'` to the file that imports the MUI component.
+```tsx
+// app/InteractiveSection.tsx
+'use client'; // needed: this uses useState + an event handler
+import { useState } from 'react';
+import { Button, Typography } from '@mui/material';
+
+export function InteractiveSection() {
+  const [count, setCount] = useState(0);
+  return (
+    <>
+      <Typography>Clicked {count} times</Typography>
+      <Button variant="contained" onClick={() => setCount((c) => c + 1)}>
+        Click me
+      </Button>
+    </>
+  );
+}
+```
+
+> **Best practice — the "client island" pattern.** Keep your `'use client'` boundary as *low* in the tree as possible: wrap only the interactive piece, not the whole page. This maximizes how much stays server-rendered (smaller JS bundle, faster first load). See `NEXTJS_16_GUIDE.md` for the broader RSC model.
+
+> **Gotcha — "You're importing a component that needs `useState`…"** This RSC error means an interactive MUI component (Dialog, Drawer, Menu, anything with state/handlers) was imported into a server component. Fix: move that usage into a file with `'use client'` at the top.
+
+> **⚡ Version note (Pages Router):** If you are on the legacy `pages/` router, the setup is different and more manual — you create an Emotion cache and extract styles in a custom `_document.tsx`. Use `@mui/material-nextjs/v15-pagesRouter`. The App Router approach above is strongly preferred for new projects.
 
 ---
 
-## 4. Theming
+## 4. Theming In Depth
 
-The theme is the single source of truth for every visual token in your app.
+The theme is the most important concept in MUI. Master it and everything else composes cleanly; ignore it and you will fight the library with one-off `sx` overrides forever.
 
-### createTheme — Full Example
+### What the theme is and why it exists
+
+`createTheme(options)` returns a deeply-nested, fully-resolved configuration object describing **every design token** in your app: the color palette, typography scale, spacing unit, shape (border radius), breakpoints, z-index layers, transitions, and per-component default props and style overrides. `ThemeProvider` publishes it via context; components and your `sx`/`styled` code read from it.
+
+The *logic*: design systems are about consistency, and consistency comes from a single source of truth. Instead of typing `#1976d2` in fifty places, you define `palette.primary.main` once. Instead of guessing `16px` vs `15px` paddings, you use `spacing(2)`. When the brand color changes, you edit one line. This centralization is the whole point.
+
+### `createTheme` — a complete, annotated theme
 
 ```tsx
 // theme.ts
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
-  // ─── Palette ────────────────────────────────────────────────────────────────
+  // Emit CSS custom properties (--mui-palette-primary-main, etc.). Strongly
+  // recommended: enables flash-free dark mode and lets you reference tokens in
+  // plain CSS. (§12)
+  cssVariables: true,
+
+  // ─── PALETTE — the color system ────────────────────────────────────────────
   palette: {
-    mode: 'light', // 'light' | 'dark'
+    mode: 'light', // 'light' | 'dark' (or use colorSchemes for both — §12)
+
+    // Each color "intention" has main/light/dark/contrastText. You MUST give
+    // `main`; MUI auto-derives light/dark/contrastText if you omit them.
     primary: {
-      main: '#1976d2',    // Required
-      light: '#42a5f5',   // Optional; MUI auto-calculates if omitted
+      main: '#1976d2',
+      light: '#42a5f5',
       dark: '#1565c0',
-      contrastText: '#fff',
+      contrastText: '#fff', // text color placed ON the primary background
     },
-    secondary: {
-      main: '#9c27b0',
-    },
+    secondary: { main: '#9c27b0' },
+
+    // Semantic colors — used by Alert, helper text, status chips, etc.
     error:   { main: '#d32f2f' },
     warning: { main: '#ed6c02' },
     info:    { main: '#0288d1' },
     success: { main: '#2e7d32' },
-    // Custom color (must augment the type — see TypeScript section below)
-    // neutral: { main: '#64748B' },
-    background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
-    },
+
+    // Surfaces and text. CssBaseline applies background.default to <body>.
+    background: { default: '#f5f5f5', paper: '#ffffff' },
     text: {
-      primary: 'rgba(0,0,0,0.87)',
+      primary:   'rgba(0,0,0,0.87)',
       secondary: 'rgba(0,0,0,0.60)',
-      disabled: 'rgba(0,0,0,0.38)',
+      disabled:  'rgba(0,0,0,0.38)',
     },
+
+    // A custom palette color (requires a TS augmentation — see below).
+    // neutral: { main: '#64748B' },
   },
 
-  // ─── Typography ─────────────────────────────────────────────────────────────
+  // ─── TYPOGRAPHY — the type scale ───────────────────────────────────────────
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    fontSize: 14,           // Base font size (px) — affects rem calculation
-    h1: { fontSize: '2.5rem', fontWeight: 700 },
+    fontSize: 14,            // base px; rem values are computed relative to this
+    fontWeightLight: 300,
+    fontWeightRegular: 400,
+    fontWeightMedium: 500,
+    fontWeightBold: 700,
+    h1: { fontSize: '2.5rem', fontWeight: 700, lineHeight: 1.2 },
     h2: { fontSize: '2rem',   fontWeight: 600 },
     body1: { fontSize: '1rem', lineHeight: 1.6 },
-    button: { textTransform: 'none' }, // Disable ALL-CAPS buttons globally
+    // Disable the Material ALL-CAPS button text app-wide — a very common tweak:
+    button: { textTransform: 'none', fontWeight: 600 },
   },
 
-  // ─── Spacing ────────────────────────────────────────────────────────────────
-  // Default: 8px. theme.spacing(1) = 8px, theme.spacing(2) = 16px, etc.
-  spacing: 8, // or a custom function: (factor) => `${factor * 0.5}rem`
+  // ─── SPACING — the 8px grid ────────────────────────────────────────────────
+  // theme.spacing(1) = 8px, spacing(2) = 16px. Drives every sx p/m/gap value.
+  spacing: 8, // or a function: (factor) => `${0.25 * factor}rem`
 
-  // ─── Shape ──────────────────────────────────────────────────────────────────
-  shape: {
-    borderRadius: 8, // Default for all components. 4 = Material default.
-  },
+  // ─── SHAPE — global corner radius ──────────────────────────────────────────
+  shape: { borderRadius: 8 }, // Material default is 4; 8–12 looks more modern.
 
-  // ─── Breakpoints ────────────────────────────────────────────────────────────
+  // ─── BREAKPOINTS — responsive cutoffs (min-widths) ─────────────────────────
   breakpoints: {
-    values: {
-      xs: 0,
-      sm: 600,
-      md: 900,
-      lg: 1200,
-      xl: 1536,
-    },
+    values: { xs: 0, sm: 600, md: 900, lg: 1200, xl: 1536 },
   },
 
-  // ─── Component Overrides ────────────────────────────────────────────────────
+  // ─── COMPONENT OVERRIDES — per-component defaults & styles ──────────────────
   components: {
     MuiButton: {
-      defaultProps: {
-        disableElevation: true, // Remove box-shadow from all Buttons
-        variant: 'contained',   // Default variant
-      },
+      // defaultProps: change the DEFAULT value of any prop, app-wide.
+      defaultProps: { disableElevation: true, variant: 'contained' },
+      // styleOverrides: inject CSS into a component's named "slots".
       styleOverrides: {
-        root: {
-          borderRadius: 20, // Pill-shaped buttons everywhere
-        },
-        containedPrimary: {
-          // Target a specific variant+color combo
-          '&:hover': { backgroundColor: '#1565c0' },
-        },
+        // `root` is the outermost slot. The callback receives theme + ownerState
+        // (the component's current props) so you can vary by variant/color.
+        root: ({ ownerState, theme }) => ({
+          borderRadius: ownerState.variant === 'outlined' ? 4 : 20,
+        }),
       },
     },
     MuiTextField: {
-      defaultProps: {
-        variant: 'outlined',
-        size: 'small',
-      },
+      defaultProps: { variant: 'outlined', size: 'small', fullWidth: true },
     },
     MuiCard: {
-      styleOverrides: {
-        root: {
-          boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-        },
-      },
+      styleOverrides: { root: { boxShadow: '0 2px 8px rgba(0,0,0,0.12)' } },
     },
   },
 });
@@ -336,378 +382,408 @@ const theme = createTheme({
 export default theme;
 ```
 
-### CssBaseline
+### Palette — how MUI resolves colors
 
-Always include `<CssBaseline />` inside `<ThemeProvider>`:
+When you write `color="primary"` on a `Button`, MUI looks up `theme.palette.primary.main` for the background and `primary.contrastText` for the text. When you write `color="error"` on an `Alert`, it uses `palette.error`. This is why your *whole app* recolors from a single palette edit. The `light`/`dark` shades are used for hover states, borders, and subtle backgrounds — let MUI auto-compute them unless you have brand-exact values.
+
+### Typography — the variant system
+
+`theme.typography` defines named text styles (`h1`–`h6`, `subtitle1/2`, `body1/2`, `caption`, `overline`, `button`). The `<Typography variant="h2">` component pulls the matching style. Defining the scale here means consistent text everywhere; you never hand-set `font-size` on headings.
+
+### Spacing — the multiplier
+
+Every spacing value in `sx` (`p`, `m`, `gap`, etc.) is multiplied by `theme.spacing` (default 8px). So `sx={{ p: 2 }}` = 16px. This enforces a consistent rhythm. To bypass it for a literal value, pass a string: `sx={{ p: '10px' }}`.
+
+### Breakpoints — the responsive contract
+
+The five breakpoints define where layouts change. They power responsive `sx` objects (`{ xs: …, md: … }`), `useMediaQuery`, and `theme.breakpoints.up('md')` in `styled()`. They are **min-width / mobile-first**: `md` means "≥ 900px." (§13 covers responsive design fully.)
+
+### `CssBaseline` — what it actually does
 
 ```tsx
-// Applies:
-// - box-sizing: border-box globally
-// - Removes default margin/padding from body
-// - Sets background-color to theme.palette.background.default
-// - Sets font-family to theme.typography.fontFamily
+// Place INSIDE ThemeProvider so it can read theme tokens.
 <ThemeProvider theme={theme}>
   <CssBaseline />
   <App />
 </ThemeProvider>
+// CssBaseline applies global styles:
+//  • box-sizing: border-box on everything (sane sizing)
+//  • removes default <body> margin
+//  • sets <body> background to theme.palette.background.default
+//  • sets the base font-family/size from theme.typography
+//  • smooths font rendering
+// It renders no DOM of its own — think of it as Normalize.css, theme-aware.
 ```
 
-### Accessing Theme Tokens in Code
+### Reading theme tokens in your own code
 
 ```tsx
 import { useTheme } from '@mui/material/styles';
 
-function MyComponent() {
-  const theme = useTheme();
-
+function Banner() {
+  const theme = useTheme(); // grab the resolved theme inside a component
   return (
     <div style={{
       backgroundColor: theme.palette.primary.main,
-      padding: theme.spacing(2),       // 16px
-      borderRadius: theme.shape.borderRadius,
+      padding: theme.spacing(2),               // 16px
+      borderRadius: theme.shape.borderRadius,  // 8px
+      color: theme.palette.primary.contrastText,
     }}>
-      Content
+      Themed banner
     </div>
   );
 }
 ```
 
-### TypeScript — Augmenting the Theme
+### TypeScript — augmenting the theme for custom tokens
+
+If you add a custom palette color or typography variant, TypeScript doesn't know about it until you *augment* MUI's type declarations. This is module augmentation — you extend MUI's interfaces.
 
 ```tsx
-// theme.d.ts — extend MUI types to add custom palette colors
+// theme.d.ts  (or any .d.ts included in tsconfig)
 import '@mui/material/styles';
 
 declare module '@mui/material/styles' {
-  interface Palette {
-    neutral: Palette['primary'];
-  }
-  interface PaletteOptions {
-    neutral?: PaletteOptions['primary'];
-  }
+  // Tell TS that palette has a `neutral` color shaped like `primary`.
+  interface Palette { neutral: Palette['primary']; }
+  interface PaletteOptions { neutral?: PaletteOptions['primary']; }
 }
 
-// Then in createTheme:
-const theme = createTheme({
-  palette: {
-    neutral: { main: '#64748B' },
-  },
-});
+// Teach the Button's `color` prop to accept "neutral":
+declare module '@mui/material/Button' {
+  interface ButtonPropsColorOverrides { neutral: true; }
+}
+
+// Now this is type-safe:
+// const theme = createTheme({ palette: { neutral: { main: '#64748B' } } });
+// <Button color="neutral">Cancel</Button>
 ```
+
+> **Best practice:** Keep `createTheme` at module scope and import it. Never call it inside a render — it is a non-trivial computation and a new object identity each time defeats memoization and forces full re-styles.
+
+> **Gotcha — nested themes.** A `<ThemeProvider>` deeper in the tree *replaces* the theme for its subtree by default, not merges. To extend the outer theme, pass it as the first arg: `createTheme(outerTheme, { … })`.
 
 ---
 
 ## 5. The `sx` Prop
 
-The `sx` prop is the primary, recommended way to style individual MUI components. It accepts an object of CSS properties with superpowers.
+### What it is and why it exists
 
-### Basic Usage
+The `sx` prop is MUI's signature styling tool — a superset of CSS that you pass as an object to any MUI component (and to `Box`). It looks like inline styles but is far more powerful: it resolves **theme tokens**, supports **responsive breakpoint objects**, accepts **shorthand spacing aliases**, allows **pseudo-classes and nested selectors**, and (unlike `style=`) generates real cached CSS classes via Emotion.
+
+The *logic*: writing one-off styles should be ergonomic and theme-aware without forcing you to create a new `styled()` component or a separate CSS file for every tweak. `sx` is the "I just need to nudge this one element" tool, and it stays connected to your theme so values like `p: 2` and `color: 'primary.main'` mean the same thing everywhere.
+
+### Key capabilities (with the why for each)
 
 ```tsx
 import { Box } from '@mui/material';
 
-// sx is available on ALL MUI components (Box, Button, Card, etc.)
 <Box
   sx={{
-    // Standard CSS properties (camelCase)
-    backgroundColor: '#f5f5f5',
-    borderRadius: '8px',
-    padding: '16px',
+    // 1) STANDARD CSS — any CSS property, camelCased.
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#fafafa',
 
-    // Shorthand aliases (MUI-specific)
-    p: 2,          // padding: theme.spacing(2) = 16px
-    px: 3,         // padding-left + padding-right: 24px
-    py: 1,         // padding-top + padding-bottom: 8px
-    m: 'auto',     // margin: auto
-    mt: 2,         // margin-top: 16px
-    mb: { xs: 2, md: 4 }, // responsive margin-bottom
+    // 2) SPACING SHORTHANDS — multiplied by theme.spacing (default 8px).
+    //    Why: terse, consistent rhythm. p/m + t/b/l/r/x/y axes.
+    p: 2,            // padding: 16px
+    px: 3,           // padding-left + padding-right: 24px
+    py: 1,           // padding-top + padding-bottom: 8px
+    mt: 'auto',      // margin-top: auto (string passes through literally)
+    gap: 2,          // gap: 16px (for flex/grid)
 
-    // Theme token access (dot notation as string)
-    color: 'primary.main',        // theme.palette.primary.main
-    bgcolor: 'background.paper',  // theme.palette.background.paper
-    fontWeight: 'typography.fontWeightBold', // theme.typography.fontWeightBold
+    // 3) THEME TOKEN STRINGS — dotted paths into the theme, resolved for you.
+    color: 'primary.main',          // → theme.palette.primary.main
+    bgcolor: 'background.paper',    // → theme.palette.background.paper
+    borderColor: 'divider',         // → theme.palette.divider
+    boxShadow: 3,                   // → theme.shadows[3]
+    borderRadius: 1,                // → theme.shape.borderRadius * 1
 
-    // Pseudo-classes
-    '&:hover': { opacity: 0.8 },
+    // 4) RESPONSIVE VALUES — object keyed by breakpoint (mobile-first).
+    //    xs is the base; each key overrides at that breakpoint and up.
+    flexDirection: { xs: 'column', md: 'row' },
+    width: { xs: '100%', md: '50%' },
+    fontSize: { xs: '0.875rem', sm: '1rem', lg: '1.25rem' },
+
+    // 5) PSEUDO-CLASSES & NESTED SELECTORS — '&' = this element.
+    '&:hover': { bgcolor: 'action.hover' },
     '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' },
-
-    // CSS media queries (manual)
-    '@media (max-width: 600px)': { fontSize: '0.875rem' },
+    '& .child': { color: 'text.secondary' }, // style a descendant
   }}
 >
   Content
 </Box>
 ```
 
-### Spacing Shorthands
+### Responsive values: object vs array
 
 ```tsx
-// Spacing values are multiplied by theme.spacing (default 8px)
-sx={{
-  p: 0,    // 0px
-  p: 1,    // 8px
-  p: 2,    // 16px
-  p: 3,    // 24px
-  p: '10px', // literal value (string bypasses multiplier)
-}}
+// Object form (clearest): keys are breakpoints, mobile-first.
+<Box sx={{ p: { xs: 1, sm: 2, md: 4 } }} />
+
+// Array form: index maps to [xs, sm, md, lg, xl]. Use `null` to skip.
+<Box sx={{ p: [1, 2, 4] }} />   // xs=8px, sm=16px, md=32px
 ```
 
-### Responsive Values
+### The callback form — full theme access
+
+When token strings aren't enough (e.g. you need `theme.breakpoints` or conditional logic on `theme.palette.mode`), pass a function. It receives the resolved theme.
 
 ```tsx
-// Pass an object with breakpoint keys (mobile-first)
-sx={{
-  // xs is the base (mobile), overridden at sm, md, lg, xl
-  fontSize: { xs: '1rem', sm: '1.25rem', md: '1.5rem' },
-  display: { xs: 'block', md: 'flex' },
-  width: { xs: '100%', md: '50%', lg: '33%' },
-
-  // Or use an array (index = xs, sm, md, lg, xl)
-  padding: [1, 2, 3], // xs=8px, sm=16px, md=24px
-}}
+<Box
+  sx={(theme) => ({
+    // Branch on the active color mode:
+    backgroundColor: theme.palette.mode === 'dark'
+      ? theme.palette.grey[800]
+      : theme.palette.grey[100],
+    // Use a breakpoint helper for a media query:
+    [theme.breakpoints.up('md')]: { padding: theme.spacing(4) },
+  })}
+>
+  Adaptive surface
+</Box>
 ```
 
-### Theme Function Access
+### The array form for merging / conditional styles
+
+`sx` accepts an *array*; entries are merged left-to-right and falsy entries are skipped. This is the idiomatic way to apply conditional styles and to let a parent component pass through `sx`.
 
 ```tsx
-// Use a callback to access the full theme object
-sx={(theme) => ({
-  backgroundColor: theme.palette.mode === 'dark'
-    ? theme.palette.grey[800]
-    : theme.palette.grey[100],
-  [theme.breakpoints.up('md')]: {
-    padding: theme.spacing(4),
-  },
-})}
+<Box
+  sx={[
+    { p: 2, borderRadius: 1 },          // base styles
+    isActive && { bgcolor: 'primary.light' }, // applied only when active
+    isError && { borderColor: 'error.main' },
+  ]}
+>
+  Card
+</Box>
 ```
+
+> **Best practice:** Use `sx` for one-off and dynamic styles. If the same `sx` object appears on many elements, promote it to a `styled()` component (§6) — `styled` resolves its base styles once, while an inline `sx` object is re-created each render (cheap, but not free in long lists).
+
+> **Gotcha — `color` strings vs CSS colors.** `color: 'primary.main'` is a *theme path*. `color: '#1976d2'` is a literal. `color: 'primary'` is **not** valid (there's no `.main`). Likewise `bgcolor` is the shorthand; `backgroundColor` also works but won't accept the `'primary.main'` token shorthand on every property — when in doubt use the documented shorthands (`bgcolor`, `color`, `borderColor`).
 
 ---
 
-## 6. Styling Approaches
+## 6. Styling Approaches: sx vs styled vs Overrides
 
-### Summary Table
+MUI gives you four ways to style. They are not competing — each has a niche. Choosing well is what separates clean codebases from `sx`-spaghetti.
 
-| Approach | When to Use | Runtime Cost |
-|---|---|---|
-| `sx` prop | One-off styles on a single component | Low (Emotion caches classes) |
-| `styled()` | Reusable styled component, complex variants | Low (same as sx) |
-| Theme `styleOverrides` | Globally override a MUI component across the entire app | Zero (runs at theme creation) |
-| Theme `defaultProps` | Set default prop values globally | Zero |
-| Inline `style` | Truly dynamic values (e.g. JS-animated values) | None (no CSS class) |
+### The decision table
 
-### 1. `sx` Prop — One-off Styles
+| Approach | What it is | Reach for it when | Runtime cost |
+|---|---|---|---|
+| **`sx` prop** | Inline style object on one element | One-off or dynamic styling of a single instance | Low (Emotion caches classes; object re-created per render) |
+| **`styled()`** | A reusable styled React component | The same styled element is used in many places, or has complex variants | Low; base styles resolved once at definition |
+| **Theme `styleOverrides`** | Global CSS for a component across the app | You want *every* `Button`/`Card`/etc. to look a certain way | Zero extra (runs at theme creation) |
+| **Theme `defaultProps`** | Default values for a component's props | You want every `TextField` to default to `size="small"` etc. | Zero |
+| **Plain `style={}`** | Native React inline style | Truly per-frame dynamic values (e.g. a JS-driven transform) | None (no class, no theme) |
+
+### 1) `sx` — one-offs (covered in §5)
 
 ```tsx
 <Button sx={{ mt: 2, px: 4 }}>Submit</Button>
 ```
 
-### 2. `styled()` — Reusable Styled Component
+### 2) `styled()` — reusable styled components
+
+`styled()` wraps any MUI component or HTML tag and returns a new component with baked-in styles. The base styles are computed once, making it efficient for components rendered many times (rows, cards, list items). It also has clean access to the theme and to the component's own props.
 
 ```tsx
 import { styled } from '@mui/material/styles';
 import { Button } from '@mui/material';
 
-// styled() wraps any MUI or HTML element
+// Wrap Button — PillButton accepts ALL Button props plus our styling.
 const PillButton = styled(Button)(({ theme }) => ({
-  borderRadius: theme.shape.borderRadius * 4,
-  paddingLeft: theme.spacing(3),
-  paddingRight: theme.spacing(3),
-  // Respond to color prop variations:
-  // '&.MuiButton-containedPrimary': { ... }
+  borderRadius: 999,
+  paddingInline: theme.spacing(3),
+  textTransform: 'none',
+  fontWeight: 600,
 }));
 
-// Usage — PillButton accepts all Button props
-<PillButton variant="contained" onClick={handleClick}>
-  Click Me
-</PillButton>
+// Usage — fully typed, behaves exactly like Button:
+<PillButton variant="contained" startIcon={<span>★</span>}>Save</PillButton>;
 ```
 
+#### Styling an HTML element with a custom prop
+
+When you put a *custom* prop on a styled HTML element, you must stop it from leaking to the DOM (React warns about unknown DOM attributes). Use `shouldForwardProp`.
+
 ```tsx
-// styled() on an HTML element with shouldForwardProp
 import { styled } from '@mui/material/styles';
 
 interface HighlightProps { active?: boolean; }
 
 const Highlight = styled('div', {
-  // Prevents 'active' from being forwarded to the DOM element
+  // Block `active` from reaching the real <div> — it's a styling prop, not HTML.
   shouldForwardProp: (prop) => prop !== 'active',
 })<HighlightProps>(({ theme, active }) => ({
+  transition: 'background-color .2s',
   backgroundColor: active ? theme.palette.primary.light : 'transparent',
-  transition: 'background-color 0.2s',
+  padding: theme.spacing(1.5),
+  borderRadius: theme.shape.borderRadius,
 }));
 
-<Highlight active={isSelected}>Card content</Highlight>
+<Highlight active={isSelected}>Row content</Highlight>;
 ```
 
-### 3. Theme Component Overrides — Global Styles
+### 3) Theme `styleOverrides` — global component styling
+
+When you want a rule to apply to *every* instance of a component, put it in the theme. This is how you brand the whole app at once — no per-instance `sx`.
 
 ```tsx
-// In createTheme — affects EVERY instance of the component
 const theme = createTheme({
   components: {
     MuiButton: {
-      // defaultProps — change prop defaults
-      defaultProps: {
-        variant: 'contained',
-        disableElevation: true,
-      },
-      // styleOverrides — CSS overrides per slot
       styleOverrides: {
-        root: ({ theme, ownerState }) => ({
-          // ownerState = the component's current props
-          borderRadius: ownerState.variant === 'outlined' ? 4 : 20,
+        // `root` slot, with ownerState so you can branch by props.
+        root: ({ ownerState }) => ({
+          borderRadius: 12,
+          ...(ownerState.size === 'large' && { paddingInline: 32 }),
         }),
-        startIcon: {
-          marginRight: 4,
-        },
-      },
-    },
-    MuiTextField: {
-      defaultProps: {
-        size: 'small',
-        variant: 'outlined',
-        fullWidth: true,
+        // Slot-specific overrides — every component documents its slots.
+        startIcon: { marginRight: 6 },
       },
     },
   },
 });
 ```
 
----
+### 4) Theme `defaultProps` — global default props
 
-## 7. Layout Components
-
-### Box
-
-`Box` is a generic `div` with the `sx` prop. It is the building block for everything.
+Change the *default* value of props app-wide. The cleanest way to, say, make all text fields small and outlined without repeating yourself.
 
 ```tsx
-import { Box } from '@mui/material';
+const theme = createTheme({
+  components: {
+    MuiTextField: { defaultProps: { size: 'small', variant: 'outlined', fullWidth: true } },
+    MuiButton:    { defaultProps: { disableElevation: true } },
+  },
+});
+// Now <TextField label="X" /> is already small/outlined/fullWidth.
+```
 
-// Basic flex container
-<Box
-  sx={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: 2,
-    p: 2,
-    bgcolor: 'background.paper',
-    borderRadius: 1,
-    boxShadow: 1,
-  }}
->
+> **Best practice — the layering strategy.** Set the *baseline* look in the theme (`defaultProps` + `styleOverrides`), use `styled()` for reusable bespoke components, and reserve `sx` for genuine one-offs. If you find yourself copy-pasting the same `sx` block, that's a signal to move it up a layer.
+
+> **Gotcha — specificity wars.** Theme `styleOverrides` and `sx` both generate Emotion classes; `sx` generally wins (it's applied last) for the same property. If an override "won't stick," check whether something more specific (a slot override, a `&.Mui-*` state class, or an inline `style`) is overriding it.
+
+---
+
+## 7. The Layout System: Box, Container, Stack, Grid
+
+MUI's layout primitives let you build responsive page structure without writing raw flexbox/grid CSS by hand — though it's all flexbox/grid underneath. Learn these four and you can lay out almost anything.
+
+### Box — the universal building block
+
+`Box` is a `<div>` (by default) supercharged with the `sx` prop. It is the single most-used component in any MUI app: use it anywhere you'd reach for a styled `<div>`. The `component` prop lets it render any element/component while keeping `sx`.
+
+```tsx
+import { Box, Avatar, Typography } from '@mui/material';
+
+// A flex row — the everyday use.
+<Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2,
+           bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1 }}>
   <Avatar src="/avatar.jpg" />
   <Typography>John Doe</Typography>
 </Box>
 
-// The 'component' prop changes the underlying HTML element
-<Box component="section" sx={{ py: 6 }}>
-  <Typography component="h2" variant="h4">About</Typography>
-</Box>
+// `component` changes the rendered tag (semantic HTML matters for a11y/SEO).
+<Box component="section" sx={{ py: 6 }}>…</Box>
 
-// Box as a flex column
-<Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: '100vh' }}>
+// A full-height app shell using flex column.
+<Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
   <Header />
-  <Box component="main" sx={{ flex: 1 }}>Content</Box>
+  <Box component="main" sx={{ flex: 1 }}>Content grows to fill</Box>
   <Footer />
 </Box>
 ```
 
-### Container
+### Container — centered, width-constrained content
 
-Centers and constrains content width. Use as the outermost layout wrapper for page sections.
+`Container` centers your content horizontally and caps its width at a breakpoint, with responsive horizontal padding ("gutters"). It is the standard outer wrapper for page sections so text doesn't stretch uncomfortably wide on big monitors.
 
 ```tsx
 import { Container } from '@mui/material';
 
-// maxWidth: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false
-<Container maxWidth="lg">
-  <Typography variant="h3">My Page</Typography>
-  {/* Content is constrained to 1200px and centered */}
+// maxWidth: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false (no cap)
+<Container maxWidth="lg" sx={{ py: 4 }}>
+  {/* content is centered and capped at ~1200px */}
 </Container>
 
-// disableGutters removes horizontal padding
-<Container maxWidth="xl" disableGutters>
-  <FullWidthHero />
+// Edge-to-edge hero: remove the side gutters.
+<Container maxWidth={false} disableGutters>
+  <FullBleedHero />
 </Container>
 ```
 
-### Stack
+### Stack — consistent spacing between children
 
-A flex container that adds consistent spacing between children. Replaces "margin hacks" for stacking elements.
+`Stack` is a flex container whose job is to space its children evenly — replacing the old "margin on every child" hack. Set `direction` and `spacing`; both can be responsive.
 
 ```tsx
-import { Stack } from '@mui/material';
+import { Stack, Divider, TextField, Button } from '@mui/material';
 
-// Vertical stack (default direction = 'column')
+// Vertical (default direction='column'), 16px gaps.
 <Stack spacing={2}>
   <TextField label="Email" />
   <TextField label="Password" type="password" />
-  <Button type="submit">Login</Button>
+  <Button type="submit" variant="contained">Log in</Button>
 </Stack>
 
-// Horizontal stack with dividers
-<Stack
-  direction="row"
-  spacing={2}
-  divider={<Divider orientation="vertical" flexItem />}
-  alignItems="center"
->
-  <Typography>Profile</Typography>
-  <Typography>Settings</Typography>
-  <Typography>Logout</Typography>
+// Horizontal with dividers between items.
+<Stack direction="row" spacing={2}
+       divider={<Divider orientation="vertical" flexItem />}
+       alignItems="center">
+  <span>Profile</span><span>Settings</span><span>Logout</span>
 </Stack>
 
-// Responsive direction
-<Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1, sm: 2 }}>
-  <Card>...</Card>
-  <Card>...</Card>
+// Responsive: stack on mobile, row on tablet+.
+<Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1, sm: 3 }}>
+  <Card>…</Card><Card>…</Card>
 </Stack>
 ```
 
-### Grid — v6+ API
+> **`Stack` vs `Box`:** Use `Stack` when the *only* thing you need is even spacing in one direction. Use `Box` when you need finer flex control (justify, wrap, custom alignment per child). They overlap; `Stack` is just the ergonomic shortcut.
 
-⚡ **Version note:** MUI v6 introduced a **new Grid component** with a breaking API change. The old `<Grid item xs={12} md={6}>` pattern is replaced with `<Grid size={{ xs: 12, md: 6 }}>` (or `size="grow"`). Import from `@mui/material/Grid2` (also exported as `Unstable_Grid2` in v5).
+### Grid — the 12-column responsive grid (the v6/v7 API)
+
+⚡ **Version note — the big one.** MUI rewrote `Grid`. The **old** API (`<Grid item xs={12} md={6}>`) is gone. In **v6** the new grid was imported as `Grid2`/`Unstable_Grid2`; in **v7** it is simply the default `Grid` and the `Grid2` name was removed. The new API:
+- There is **no `item` prop** anymore — every `Grid` inside a `container` is an item.
+- Column spans are set with a single **`size`** prop: `size={{ xs: 12, md: 6 }}` (or `size={6}`, or `size="grow"`).
+- It uses CSS `gap` under the hood (cleaner than the old negative-margin trick).
 
 ```tsx
-// v6+ Grid API — import Grid (Grid2 under the hood)
-import Grid from '@mui/material/Grid2';
-// or: import { Grid2 as Grid } from '@mui/material';
+// v7: import the default Grid. (v6: import Grid from '@mui/material/Grid2')
+import { Grid } from '@mui/material';
 
-// 12-column grid layout
+// 12-column responsive layout. spacing is the gap (× theme.spacing).
 <Grid container spacing={2}>
-  {/* size prop replaces item + xs/sm/md props */}
-  <Grid size={12}>
-    <Header />
-  </Grid>
-  <Grid size={{ xs: 12, md: 8 }}>
-    <MainContent />
-  </Grid>
-  <Grid size={{ xs: 12, md: 4 }}>
-    <Sidebar />
-  </Grid>
+  {/* size replaces item + xs/md. Full width row: */}
+  <Grid size={12}><Header /></Grid>
+
+  {/* Main + sidebar: 8/4 on desktop, stacked (12/12) on mobile. */}
+  <Grid size={{ xs: 12, md: 8 }}><MainContent /></Grid>
+  <Grid size={{ xs: 12, md: 4 }}><Sidebar /></Grid>
 </Grid>
 
-// 'grow' — takes remaining space
+// 'grow' takes the remaining space (like flex-grow:1):
 <Grid container spacing={2}>
-  <Grid size={4}>Fixed width</Grid>
-  <Grid size="grow">Fills remaining space</Grid>
+  <Grid size={4}>Fixed third</Grid>
+  <Grid size="grow">Fills the rest</Grid>
 </Grid>
 
-// Responsive card grid
+// Responsive card grid — 1/2/3/4 columns as the viewport grows:
 <Grid container spacing={3}>
   {items.map((item) => (
     <Grid key={item.id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h6">{item.title}</Typography>
-        </CardContent>
-      </Card>
+      <Card><CardContent><Typography>{item.title}</Typography></CardContent></Card>
     </Grid>
   ))}
 </Grid>
 
-// Nested grids
+// Nested grids: a Grid item can itself be a container.
 <Grid container spacing={2}>
   <Grid size={6}>
     <Grid container spacing={1}>
@@ -718,465 +794,348 @@ import Grid from '@mui/material/Grid2';
 </Grid>
 ```
 
+> **When to use Grid vs Stack vs CSS grid via `sx`:** Use `Grid` for true 12-column page/card layouts that reflow by breakpoint. Use `Stack` for simple one-directional spacing. For bespoke grids, `<Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>` is often simpler than `Grid` and avoids the wrapper overhead.
+
+> **Gotcha — migrating old Grid code.** If you copy a pre-v6 snippet with `<Grid item xs={12} md={6}>`, it will not work. Convert to `<Grid size={{ xs: 12, md: 6 }}>` and remove `item`.
+
 ---
 
 ## 8. Core Component Reference
 
-### Text & Display
+This is the working catalog. For each component: a one-line "what it's for," the **key props**, the **gotchas**, then commented code. Components are grouped: Text & Display → Inputs → Data Display → Navigation → Feedback/Overlays.
 
----
+### 8.1 Text & Display
 
-#### Typography
+#### Typography — semantic, theme-styled text
 
-Renders semantic HTML text with theme-consistent styles.
+Renders text with a theme-defined style. The crucial idea: **`variant` controls the *look*, `component` controls the *HTML tag*.** That separation lets you have an `<h2>` that looks like `h4`, keeping your heading hierarchy correct for accessibility/SEO while matching the design.
 
-- **Key props:** `variant`, `component`, `color`, `align`, `noWrap`, `gutterBottom`
-- **Variants:** `h1`–`h6`, `subtitle1`, `subtitle2`, `body1`, `body2`, `caption`, `overline`, `button`
+- **Key props:** `variant` (h1–h6, subtitle1/2, body1/2, caption, overline, button), `component`, `color`, `align`, `gutterBottom`, `noWrap`.
 
 ```tsx
 import { Typography } from '@mui/material';
 
-<Typography variant="h1" component="h1" gutterBottom>
-  Page Title
-</Typography>
+<Typography variant="h1" component="h1" gutterBottom>Page Title</Typography>
+<Typography variant="body1" color="text.secondary">Secondary paragraph.</Typography>
 
-<Typography variant="body1" color="text.secondary">
-  Paragraph text in a secondary color.
-</Typography>
+{/* Looks like H4, but is semantically a paragraph: */}
+<Typography variant="h4" component="p">Big intro line</Typography>
 
-<Typography variant="caption" display="block" sx={{ mt: 1 }}>
-  Helper text below a field
-</Typography>
-
-{/* Change rendered element without changing visual style */}
-<Typography variant="h4" component="p">
-  Looks like H4, renders as paragraph
-</Typography>
-
-{/* Truncate with ellipsis */}
-<Typography noWrap sx={{ maxWidth: 200 }}>
-  This very long text will be truncated with an ellipsis at the end
-</Typography>
+{/* Truncate long text with an ellipsis: */}
+<Typography noWrap sx={{ maxWidth: 200 }}>Very long text that will be cut…</Typography>
 ```
 
----
+> **Gotcha:** Nesting block-level `Typography` inside another can produce invalid HTML (`<p>` inside `<p>`). Use `component="span"` for inline text inside a paragraph.
 
-### Inputs & Forms
+### 8.2 Inputs & Forms
 
----
+#### Button — the primary action element
 
-#### Button
+- **Key props:** `variant` (`contained` | `outlined` | `text`), `color`, `size`, `startIcon`/`endIcon`, `fullWidth`, `disabled`, `loading` (v6+), `href`, `component`.
 
 ```tsx
 import { Button } from '@mui/material';
-
-{/* variant: 'contained' | 'outlined' | 'text' */}
-<Button variant="contained" color="primary" onClick={handleClick}>
-  Submit
-</Button>
-
-<Button variant="outlined" color="secondary" disabled>
-  Disabled
-</Button>
-
-<Button variant="text" size="small">
-  Cancel
-</Button>
-
-{/* With icons */}
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-<Button variant="contained" startIcon={<SendIcon />}>
-  Send
-</Button>
+<Button variant="contained" color="primary" onClick={handleClick}>Submit</Button>
+<Button variant="outlined" color="secondary" disabled>Disabled</Button>
+<Button variant="text" size="small">Cancel</Button>
 
-<Button variant="outlined" color="error" endIcon={<DeleteIcon />}>
-  Delete
-</Button>
+{/* Icons placed before/after the label: */}
+<Button variant="contained" startIcon={<SendIcon />}>Send</Button>
+<Button variant="outlined" color="error" endIcon={<DeleteIcon />}>Delete</Button>
 
-{/* Full width */}
-<Button fullWidth variant="contained" sx={{ mt: 2 }}>
-  Login
-</Button>
+<Button fullWidth variant="contained" sx={{ mt: 2 }}>Log in</Button>
 
-{/* Loading state (MUI v6+) */}
-<Button loading={isLoading} variant="contained">
+{/* Built-in loading state (MUI v6+): shows a spinner, disables clicks. */}
+<Button loading={isSaving} loadingPosition="start" startIcon={<SendIcon />}>
   Save
 </Button>
 ```
 
-#### IconButton
+> **Best practice:** One `contained` (primary) button per view; secondary actions are `outlined` or `text`. This visual hierarchy guides the user to the main action.
 
-Clickable icon with no label text. Good for toolbar actions.
+#### IconButton — a clickable icon (no label)
+
+For toolbar/compact actions. **Always** give it an accessible name (`aria-label`) since there's no visible text, and wrap it in a `Tooltip` for discoverability.
 
 ```tsx
 import { IconButton, Tooltip } from '@mui/material';
 import FavoriteIcon from '@mui/icons-material/Favorite';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 <Tooltip title="Add to favorites">
   <IconButton aria-label="add to favorites" color="error">
     <FavoriteIcon />
   </IconButton>
 </Tooltip>
-
-{/* size: 'small' | 'medium' | 'large' */}
-<IconButton size="small" onClick={openMenu}>
-  <MoreVertIcon />
-</IconButton>
 ```
 
-#### TextField
+#### TextField — the all-in-one text input
 
-The Swiss Army knife for user text input. Wraps `<input>` with label, helper text, and validation styling.
+`TextField` is a composite: it bundles the `<input>`, the floating `<label>`, helper/error text, and adornments into one component with built-in label animation and validation styling. It is the workhorse of MUI forms.
+
+- **Key props:** `label`, `value`/`onChange` (controlled), `type`, `variant` (`outlined` | `filled` | `standard`), `size`, `error` (bool), `helperText`, `required`, `multiline` + `rows`, `slotProps` (v6+ way to reach inner slots), `select` (turns it into a Select).
 
 ```tsx
-import { TextField } from '@mui/material';
+import { TextField, InputAdornment } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import { useState } from 'react';
 
-{/* Controlled input */}
 const [value, setValue] = useState('');
 
+{/* Controlled input — value comes from state, onChange writes it back. */}
 <TextField
-  label="Email Address"
-  type="email"
-  value={value}
-  onChange={(e) => setValue(e.target.value)}
-  variant="outlined"   // 'outlined' | 'filled' | 'standard'
-  size="small"         // 'small' | 'medium'
-  fullWidth
-  required
+  label="Email Address" type="email"
+  value={value} onChange={(e) => setValue(e.target.value)}
+  variant="outlined" size="small" fullWidth required
   helperText="We'll never share your email."
   placeholder="you@example.com"
 />
 
-{/* Error state */}
-<TextField
-  label="Password"
-  type="password"
-  error={!!errors.password}
-  helperText={errors.password?.message}
-/>
+{/* Error state: red border + red helper text. */}
+<TextField label="Password" type="password"
+  error={!!errors.password} helperText={errors.password?.message} />
 
-{/* Multiline (textarea) */}
-<TextField
-  label="Description"
-  multiline
-  rows={4}
-  fullWidth
-  variant="outlined"
-/>
+{/* Multiline = textarea. */}
+<TextField label="Description" multiline rows={4} fullWidth />
 
-{/* With adornments */}
-import { InputAdornment } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-
+{/* Adornments via slotProps (v6+). (Old API was InputProps.startAdornment.) */}
 <TextField
   label="Search"
-  InputProps={{
-    startAdornment: (
-      <InputAdornment position="start">
-        <SearchIcon />
-      </InputAdornment>
-    ),
+  slotProps={{
+    input: {
+      startAdornment: (
+        <InputAdornment position="start"><SearchIcon /></InputAdornment>
+      ),
+    },
   }}
 />
 ```
 
-#### Select
+> **⚡ Version note:** In v6+ the preferred way to pass props to inner pieces is **`slotProps`** (e.g. `slotProps={{ input: {...}, htmlInput: {...} }}`). The older `InputProps`/`inputProps` still work but are being phased toward the unified `slotProps` API.
+
+> **Gotcha — controlled vs uncontrolled.** If you pass `value` you MUST pass `onChange`, or the field becomes read-only and React warns. For uncontrolled fields (e.g. with React Hook Form's `register`), use `defaultValue` instead of `value`.
+
+#### Select — a dropdown of options
+
+A `Select` needs a wrapping `FormControl` + `InputLabel` to get the floating label behavior. Pair `labelId` (on Select) with the `InputLabel`'s `id` for accessibility, and repeat the label text in Select's `label` prop so the outline notch sizes correctly.
 
 ```tsx
-import { FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { FormControl, InputLabel, Select, MenuItem, Checkbox, ListItemText } from '@mui/material';
+import { useState } from 'react';
 
 const [age, setAge] = useState('');
 
 <FormControl fullWidth size="small">
   <InputLabel id="age-label">Age</InputLabel>
-  <Select
-    labelId="age-label"
-    value={age}
-    label="Age"
-    onChange={(e) => setAge(e.target.value)}
-  >
-    <MenuItem value="">
-      <em>None</em>
-    </MenuItem>
+  <Select labelId="age-label" value={age} label="Age"
+          onChange={(e) => setAge(e.target.value)}>
+    <MenuItem value=""><em>None</em></MenuItem>
     <MenuItem value={10}>Ten</MenuItem>
     <MenuItem value={20}>Twenty</MenuItem>
-    <MenuItem value={30}>Thirty</MenuItem>
   </Select>
 </FormControl>
 
-{/* Multiple select */}
-<Select multiple value={selectedItems} onChange={handleChange} renderValue={(selected) => selected.join(', ')}>
+{/* Multi-select with checkboxes and a summary render. */}
+<Select multiple value={selected} onChange={handleChange}
+        renderValue={(s) => (s as string[]).join(', ')}>
   {options.map((opt) => (
     <MenuItem key={opt} value={opt}>
-      <Checkbox checked={selectedItems.includes(opt)} />
+      <Checkbox checked={selected.includes(opt)} />
       <ListItemText primary={opt} />
     </MenuItem>
   ))}
 </Select>
 ```
 
-#### Checkbox, Radio, Switch
+#### Autocomplete — searchable combobox
 
-```tsx
-import {
-  Checkbox, Radio, RadioGroup, Switch,
-  FormControlLabel, FormControl, FormLabel
-} from '@mui/material';
+Use over `Select` when the option list is long, needs filtering, supports multiple tags, free typing, or async loading.
 
-{/* Checkbox */}
-<FormControlLabel
-  control={<Checkbox checked={checked} onChange={(e) => setChecked(e.target.checked)} />}
-  label="Accept terms and conditions"
-/>
-
-{/* Radio group */}
-<FormControl>
-  <FormLabel>Gender</FormLabel>
-  <RadioGroup value={gender} onChange={(e) => setGender(e.target.value)} row>
-    <FormControlLabel value="female" control={<Radio />} label="Female" />
-    <FormControlLabel value="male"   control={<Radio />} label="Male" />
-    <FormControlLabel value="other"  control={<Radio />} label="Other" />
-  </RadioGroup>
-</FormControl>
-
-{/* Switch */}
-<FormControlLabel
-  control={<Switch checked={darkMode} onChange={(e) => setDarkMode(e.target.checked)} />}
-  label="Dark Mode"
-/>
-```
-
-#### Autocomplete
-
-Combo-box with filtering, free-solo input, async options, and multi-select.
+- **Key props:** `options`, `value`/`onChange`, `getOptionLabel`, `isOptionEqualToValue`, `multiple`, `freeSolo`, `loading`, `renderInput` (required — render a `TextField`).
 
 ```tsx
 import { Autocomplete, TextField } from '@mui/material';
 
-const options = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry'];
+const options = ['Apple', 'Banana', 'Cherry'];
 
-{/* Basic */}
+{/* Basic single-select. renderInput wires the Autocomplete to a TextField. */}
+<Autocomplete options={options}
+  onChange={(_e, value) => setFruit(value)}
+  renderInput={(params) => <TextField {...params} label="Fruit" />} />
+
+{/* Objects: tell Autocomplete how to label and compare them. */}
 <Autocomplete
-  options={options}
-  renderInput={(params) => <TextField {...params} label="Fruit" />}
-  onChange={(event, value) => setFruit(value)}
-/>
+  options={movies}
+  getOptionLabel={(o) => o.title}
+  isOptionEqualToValue={(o, v) => o.id === v.id}  // avoids "controlled" warnings
+  renderInput={(params) => <TextField {...params} label="Movie" />} />
 
-{/* With objects */}
-const movieOptions = [
-  { title: 'The Shawshank Redemption', year: 1994 },
-  { title: 'The Godfather', year: 1972 },
-];
+{/* Multiple → renders deletable chips. */}
+<Autocomplete multiple options={options} value={tags}
+  onChange={(_e, v) => setTags(v)}
+  renderInput={(params) => <TextField {...params} label="Tags" />} />
 
-<Autocomplete
-  options={movieOptions}
-  getOptionLabel={(option) => option.title}
-  renderInput={(params) => <TextField {...params} label="Movie" />}
-  isOptionEqualToValue={(option, value) => option.title === value.title}
-/>
-
-{/* Multiple selection */}
-<Autocomplete
-  multiple
-  options={options}
-  renderInput={(params) => <TextField {...params} label="Tags" />}
-  value={tags}
-  onChange={(e, newValue) => setTags(newValue)}
-/>
-
-{/* Free-solo (user can type anything) */}
-<Autocomplete
-  freeSolo
-  options={options}
-  renderInput={(params) => <TextField {...params} label="Search" />}
-/>
+{/* freeSolo allows arbitrary typed values (e.g. a search box). */}
+<Autocomplete freeSolo options={options}
+  renderInput={(params) => <TextField {...params} label="Search" />} />
 ```
 
-#### Slider
+> **Gotcha:** With object options you almost always need `isOptionEqualToValue`, otherwise MUI compares by reference and complains the value isn't in the options list.
+
+#### Checkbox, Radio, Switch — boolean & choice inputs
+
+Each is usually wrapped in `FormControlLabel` to attach a clickable label. `Radio`s live inside a `RadioGroup` (which owns the shared value). `Switch` is a styled boolean toggle (use for instant on/off settings, not form submission of yes/no).
 
 ```tsx
-import { Slider, Typography, Box } from '@mui/material';
+import { Checkbox, Radio, RadioGroup, Switch,
+         FormControlLabel, FormControl, FormLabel } from '@mui/material';
 
-{/* Basic */}
+{/* Checkbox — controlled via checked + onChange(e.target.checked). */}
+<FormControlLabel
+  control={<Checkbox checked={agree} onChange={(e) => setAgree(e.target.checked)} />}
+  label="Accept terms and conditions" />
+
+{/* Radio group — RadioGroup owns the value; each Radio has a `value`. */}
+<FormControl>
+  <FormLabel>Plan</FormLabel>
+  <RadioGroup row value={plan} onChange={(e) => setPlan(e.target.value)}>
+    <FormControlLabel value="free" control={<Radio />} label="Free" />
+    <FormControlLabel value="pro"  control={<Radio />} label="Pro" />
+  </RadioGroup>
+</FormControl>
+
+{/* Switch — for settings toggles. */}
+<FormControlLabel
+  control={<Switch checked={dark} onChange={(e) => setDark(e.target.checked)} />}
+  label="Dark mode" />
+```
+
+#### Slider — numeric range input
+
+```tsx
+import { Slider, Box, Typography } from '@mui/material';
+
 <Box sx={{ width: 300 }}>
   <Typography>Volume: {volume}</Typography>
-  <Slider
-    value={volume}
-    onChange={(e, newValue) => setVolume(newValue as number)}
-    min={0}
-    max={100}
-    step={1}
-    marks
-    valueLabelDisplay="auto"
-    aria-label="Volume"
-  />
+  <Slider value={volume} onChange={(_e, v) => setVolume(v as number)}
+          min={0} max={100} step={1} marks valueLabelDisplay="auto"
+          aria-label="Volume" />
 </Box>
 
-{/* Range slider */}
-<Slider
-  value={priceRange}
-  onChange={(e, newValue) => setPriceRange(newValue as number[])}
-  min={0}
-  max={1000}
-  step={10}
-  valueLabelDisplay="on"
-  disableSwap  // Prevents thumbs from crossing
-/>
+{/* Range: value is a two-element array. disableSwap stops thumbs crossing. */}
+<Slider value={range} onChange={(_e, v) => setRange(v as number[])}
+        min={0} max={1000} step={10} valueLabelDisplay="on" disableSwap />
 ```
 
----
+### 8.3 Data Display
 
-### Data Display
+#### Card — a content surface with optional media and actions
 
----
-
-#### Card
-
-Surface-level container for related content and actions.
+Compose from `CardHeader`, `CardMedia`, `CardContent`, and `CardActions`. Wrap the whole thing in `CardActionArea` if the *entire* card should be one clickable link.
 
 ```tsx
-import {
-  Card, CardContent, CardMedia, CardActions,
-  CardHeader, Avatar, Typography, Button, IconButton
-} from '@mui/material';
+import { Card, CardHeader, CardMedia, CardContent, CardActions,
+         Avatar, Typography, IconButton, Button } from '@mui/material';
 import FavoriteIcon from '@mui/icons-material/Favorite';
-import ShareIcon from '@mui/icons-material/Share';
 
 <Card sx={{ maxWidth: 345 }}>
-  <CardHeader
-    avatar={<Avatar sx={{ bgcolor: 'error.main' }}>R</Avatar>}
-    title="Shrimp and Chorizo Paella"
-    subheader="September 14, 2016"
-  />
-  <CardMedia
-    component="img"
-    height="194"
-    image="/paella.jpg"
-    alt="Paella dish"
-  />
+  <CardHeader avatar={<Avatar sx={{ bgcolor: 'error.main' }}>R</Avatar>}
+              title="Shrimp Paella" subheader="Sep 14, 2026" />
+  <CardMedia component="img" height="194" image="/paella.jpg" alt="Paella" />
   <CardContent>
     <Typography variant="body2" color="text.secondary">
-      This impressive paella is a perfect combination of rich saffron...
+      A perfect combination of saffron-infused rice and seafood…
     </Typography>
   </CardContent>
-  <CardActions disableSpacing>
-    <IconButton aria-label="add to favorites">
-      <FavoriteIcon />
-    </IconButton>
-    <IconButton aria-label="share">
-      <ShareIcon />
-    </IconButton>
+  <CardActions>
+    <IconButton aria-label="favorite"><FavoriteIcon /></IconButton>
     <Button size="small">Learn More</Button>
   </CardActions>
 </Card>
 ```
 
-#### Paper
+#### Paper — the base elevated surface
 
-Base surface component. Provides elevation (shadow) and background.
+`Paper` is the primitive that `Card`, `Menu`, `Dialog`, etc. are built on: a background with elevation (shadow). Use it directly for simple raised panels.
 
 ```tsx
-import { Paper } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
 
-{/* elevation: 0–24 */}
+{/* elevation: 0–24 controls shadow depth. */}
 <Paper elevation={3} sx={{ p: 3, maxWidth: 400, mx: 'auto' }}>
-  <Typography variant="h6">Paper Surface</Typography>
-  <Typography variant="body2">Content on a raised surface.</Typography>
+  <Typography variant="h6">Raised panel</Typography>
 </Paper>
 
-{/* variant: 'elevation' | 'outlined' */}
-<Paper variant="outlined" sx={{ p: 2 }}>
-  Outlined paper (no shadow, has border)
-</Paper>
+{/* variant="outlined": a border instead of a shadow. */}
+<Paper variant="outlined" sx={{ p: 2 }}>Bordered panel</Paper>
 ```
 
-#### Accordion
-
-Expandable/collapsible content sections.
+#### Accordion — collapsible sections
 
 ```tsx
 import { Accordion, AccordionSummary, AccordionDetails, Typography } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { useState } from 'react';
 
-{/* Controlled expansion */}
+// Controlled: only one panel open at a time.
 const [expanded, setExpanded] = useState<string | false>(false);
-const handleChange = (panel: string) => (e: React.SyntheticEvent, isExpanded: boolean) => {
-  setExpanded(isExpanded ? panel : false);
-};
+const handle = (panel: string) =>
+  (_e: React.SyntheticEvent, isOpen: boolean) => setExpanded(isOpen ? panel : false);
 
-{['panel1', 'panel2', 'panel3'].map((panel, i) => (
-  <Accordion key={panel} expanded={expanded === panel} onChange={handleChange(panel)}>
-    <AccordionSummary expandIcon={<ExpandMoreIcon />} id={`${panel}-header`}>
+{['p1', 'p2'].map((p, i) => (
+  <Accordion key={p} expanded={expanded === p} onChange={handle(p)}>
+    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
       <Typography fontWeight={500}>Section {i + 1}</Typography>
     </AccordionSummary>
-    <AccordionDetails>
-      <Typography>Content for section {i + 1}</Typography>
-    </AccordionDetails>
+    <AccordionDetails><Typography>Content {i + 1}</Typography></AccordionDetails>
   </Accordion>
 ))}
 ```
 
-#### List
+#### List — vertical item lists
+
+Use `ListItemButton` (not `ListItemText` alone) when items are clickable/navigable — it provides the hover/focus/selected states and ripple.
 
 ```tsx
-import {
-  List, ListItem, ListItemButton, ListItemIcon,
-  ListItemText, ListSubheader, Divider
-} from '@mui/material';
+import { List, ListItem, ListItemButton, ListItemIcon, ListItemText,
+         ListSubheader, Divider } from '@mui/material';
 import InboxIcon from '@mui/icons-material/Inbox';
-import DraftsIcon from '@mui/icons-material/Drafts';
 
-<List
-  subheader={<ListSubheader>Mail</ListSubheader>}
-  sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }}
->
+<List subheader={<ListSubheader>Mail</ListSubheader>}
+      sx={{ maxWidth: 360, bgcolor: 'background.paper' }}>
   <ListItem disablePadding>
-    <ListItemButton selected onClick={() => setSelected('inbox')}>
+    <ListItemButton selected onClick={() => setView('inbox')}>
       <ListItemIcon><InboxIcon /></ListItemIcon>
       <ListItemText primary="Inbox" secondary="42 unread" />
     </ListItemButton>
   </ListItem>
   <Divider />
-  <ListItem disablePadding>
-    <ListItemButton>
-      <ListItemIcon><DraftsIcon /></ListItemIcon>
-      <ListItemText primary="Drafts" />
-    </ListItemButton>
-  </ListItem>
 </List>
 ```
 
-#### Table
+#### Table — static/simple tables
+
+For small, presentational tables. For sorting/filtering/pagination over many rows, use the **DataGrid** (§10) instead.
 
 ```tsx
-import {
-  Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper
-} from '@mui/material';
-
-const rows = [
-  { name: 'Frozen yoghurt', calories: 159, fat: 6 },
-  { name: 'Ice cream sandwich', calories: 237, fat: 9 },
-];
+import { Table, TableBody, TableCell, TableContainer,
+         TableHead, TableRow, Paper } from '@mui/material';
 
 <TableContainer component={Paper}>
-  <Table sx={{ minWidth: 650 }} aria-label="simple table">
+  <Table aria-label="dessert table">
     <TableHead>
       <TableRow>
         <TableCell>Dessert</TableCell>
         <TableCell align="right">Calories</TableCell>
-        <TableCell align="right">Fat (g)</TableCell>
       </TableRow>
     </TableHead>
     <TableBody>
       {rows.map((row) => (
-        <TableRow key={row.name} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+        <TableRow key={row.name}>
           <TableCell component="th" scope="row">{row.name}</TableCell>
           <TableCell align="right">{row.calories}</TableCell>
-          <TableCell align="right">{row.fat}</TableCell>
         </TableRow>
       ))}
     </TableBody>
@@ -1184,212 +1143,135 @@ const rows = [
 </TableContainer>
 ```
 
-#### Chip
-
-Small labels for tags, categories, or filters.
+#### Chip, Avatar, Badge, Tooltip
 
 ```tsx
-import { Chip, Stack } from '@mui/material';
-import FaceIcon from '@mui/icons-material/Face';
+import { Chip, Avatar, Badge, Tooltip, Stack, Button } from '@mui/material';
+import MailIcon from '@mui/icons-material/Mail';
 
+{/* Chip — compact tags/filters. onDelete adds an X; onClick makes it actionable. */}
 <Stack direction="row" spacing={1}>
-  <Chip label="Basic" />
   <Chip label="Primary" color="primary" />
-  <Chip label="Outlined" variant="outlined" color="secondary" />
-  <Chip label="Clickable" onClick={() => console.log('clicked')} />
-  <Chip label="Deletable" onDelete={() => console.log('deleted')} />
-  <Chip icon={<FaceIcon />} label="With Icon" color="success" />
-</Stack>
-```
-
-#### Avatar & Badge
-
-```tsx
-import { Avatar, Badge, Stack } from '@mui/material';
-
-{/* Avatar variants */}
-<Stack direction="row" spacing={2}>
-  <Avatar alt="Jane Doe" src="/jane.jpg" />                  {/* Image */}
-  <Avatar sx={{ bgcolor: 'secondary.main' }}>JD</Avatar>     {/* Initials */}
-  <Avatar variant="square"><PersonIcon /></Avatar>            {/* Icon */}
+  <Chip label="Outlined" variant="outlined" />
+  <Chip label="Deletable" onDelete={() => removeTag()} />
 </Stack>
 
-{/* Badge — adds a small indicator over a child element */}
-<Badge badgeContent={4} color="error">
-  <MailIcon />
-</Badge>
+{/* Avatar — image, initials, or icon. */}
+<Avatar alt="Jane" src="/jane.jpg" />
+<Avatar sx={{ bgcolor: 'secondary.main' }}>JD</Avatar>
 
-<Badge variant="dot" color="success" overlap="circular">
-  <Avatar src="/user.jpg" />
-</Badge>
-```
+{/* Badge — small overlay indicator (counts/dots). */}
+<Badge badgeContent={4} color="error"><MailIcon /></Badge>
 
-#### Tooltip
-
-```tsx
-import { Tooltip, Button } from '@mui/material';
-
-<Tooltip title="This action cannot be undone" arrow placement="top">
-  <Button color="error">Delete</Button>
-</Tooltip>
-
-{/* Tooltip on a disabled element — need a wrapper span */}
+{/* Tooltip — hover/focus hint. For a DISABLED element, wrap in <span>, because
+    disabled elements don't fire the pointer events the tooltip listens for. */}
 <Tooltip title="Log in to continue">
-  <span>
-    <Button disabled>Purchase</Button>
-  </span>
+  <span><Button disabled>Purchase</Button></span>
 </Tooltip>
 ```
 
----
+### 8.4 Navigation
 
-### Navigation
+#### AppBar & Toolbar — the top app bar
 
----
-
-#### AppBar & Toolbar
+`AppBar` is the colored bar; `Toolbar` provides correct height/padding for its contents. Use `display` breakpoints to swap a desktop nav for a mobile hamburger.
 
 ```tsx
-import {
-  AppBar, Toolbar, Typography, IconButton,
-  Button, Box, Menu, MenuItem
-} from '@mui/material';
+import { AppBar, Toolbar, Typography, IconButton, Button, Box } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 
-function NavBar() {
-  return (
-    <AppBar position="sticky">  {/* 'fixed' | 'sticky' | 'static' | 'relative' */}
-      <Toolbar>
-        {/* Hamburger menu for mobile */}
-        <IconButton
-          size="large"
-          edge="start"
-          color="inherit"
-          aria-label="menu"
-          sx={{ mr: 2, display: { md: 'none' } }}
-          onClick={toggleDrawer}
-        >
-          <MenuIcon />
-        </IconButton>
+<AppBar position="sticky"> {/* 'fixed' | 'sticky' | 'static' | 'absolute' */}
+  <Toolbar>
+    {/* Hamburger — only on mobile (hidden at md+). */}
+    <IconButton edge="start" color="inherit" aria-label="open menu"
+                sx={{ mr: 2, display: { md: 'none' } }} onClick={toggleDrawer}>
+      <MenuIcon />
+    </IconButton>
 
-        {/* Logo / brand */}
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          My App
-        </Typography>
+    {/* flexGrow:1 pushes the nav links to the right. */}
+    <Typography variant="h6" sx={{ flexGrow: 1 }}>My App</Typography>
 
-        {/* Desktop nav links */}
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
-          <Button color="inherit">Home</Button>
-          <Button color="inherit">About</Button>
-          <Button color="inherit">Contact</Button>
-        </Box>
-      </Toolbar>
-    </AppBar>
-  );
-}
+    {/* Desktop links — hidden on mobile. */}
+    <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
+      <Button color="inherit">Home</Button>
+      <Button color="inherit">About</Button>
+    </Box>
+  </Toolbar>
+</AppBar>
 ```
 
-#### Drawer
+> **Gotcha — `position="fixed"` overlaps content.** A fixed AppBar floats above the page, hiding the top of your content. Add a spacer `<Toolbar />` (empty) right after it, or `sx={{ mt: 8 }}` on your main content.
 
-Side panel for navigation or supplementary content.
+#### Drawer — slide-in side panel
 
 ```tsx
 import { Drawer, Box, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 
-const [open, setOpen] = useState(false);
-const navItems = ['Home', 'About', 'Services', 'Contact'];
-
-<>
-  <Button onClick={() => setOpen(true)}>Open Menu</Button>
-
-  <Drawer
-    anchor="left"          // 'left' | 'right' | 'top' | 'bottom'
-    open={open}
-    onClose={() => setOpen(false)}
-  >
-    <Box sx={{ width: 250 }} role="presentation" onClick={() => setOpen(false)}>
-      <List>
-        {navItems.map((item) => (
-          <ListItem key={item} disablePadding>
-            <ListItemButton component="a" href={`/${item.toLowerCase()}`}>
-              <ListItemText primary={item} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </Box>
-  </Drawer>
-</>
-
-{/* Permanent drawer (sidebar layout) */}
-<Drawer variant="permanent" sx={{ '& .MuiDrawer-paper': { width: 240 } }}>
-  <Box sx={{ overflow: 'auto' }}>
-    <List>{/* nav items */}</List>
+<Drawer anchor="left" open={open} onClose={() => setOpen(false)}>
+  {/* role/onClick close the drawer when a nav item is chosen. */}
+  <Box sx={{ width: 250 }} role="presentation" onClick={() => setOpen(false)}>
+    <List>
+      {['Home', 'About', 'Contact'].map((item) => (
+        <ListItem key={item} disablePadding>
+          <ListItemButton component="a" href={`/${item.toLowerCase()}`}>
+            <ListItemText primary={item} />
+          </ListItemButton>
+        </ListItem>
+      ))}
+    </List>
   </Box>
+</Drawer>
+
+{/* Permanent variant = a fixed sidebar (no overlay). */}
+<Drawer variant="permanent" sx={{ '& .MuiDrawer-paper': { width: 240 } }}>
+  …
 </Drawer>
 ```
 
-#### Tabs
+#### Tabs — switch between views
 
 ```tsx
 import { Tabs, Tab, Box } from '@mui/material';
+import { useState } from 'react';
 
 const [tab, setTab] = useState(0);
 
 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-  <Tabs value={tab} onChange={(e, v) => setTab(v)} aria-label="main tabs">
-    <Tab label="Overview" id="tab-0" aria-controls="tabpanel-0" />
-    <Tab label="Settings" id="tab-1" aria-controls="tabpanel-1" />
-    <Tab label="History"  id="tab-2" aria-controls="tabpanel-2" />
+  <Tabs value={tab} onChange={(_e, v) => setTab(v)} aria-label="main tabs">
+    <Tab label="Overview" id="tab-0" aria-controls="panel-0" />
+    <Tab label="Settings" id="tab-1" aria-controls="panel-1" />
   </Tabs>
 </Box>
 
-{/* Tab panels */}
-{[<Overview />, <Settings />, <History />].map((panel, i) => (
-  <Box
-    key={i}
-    role="tabpanel"
-    id={`tabpanel-${i}`}
-    aria-labelledby={`tab-${i}`}
-    hidden={tab !== i}
-    sx={{ p: 3 }}
-  >
+{/* Render only the active panel. role/aria wire up screen-reader semantics. */}
+{[<Overview />, <Settings />].map((panel, i) => (
+  <Box key={i} role="tabpanel" hidden={tab !== i} id={`panel-${i}`}
+       aria-labelledby={`tab-${i}`} sx={{ p: 3 }}>
     {tab === i && panel}
   </Box>
 ))}
 ```
 
-#### Menu
+#### Menu — button-anchored dropdown
 
-Dropdown menu, typically anchored to a button.
+The pattern: track an `anchorEl` (the element to position against). Open when set, close when nulled.
 
 ```tsx
 import { Menu, MenuItem, Button, Divider, ListItemIcon, ListItemText } from '@mui/material';
-import ContentCopy from '@mui/icons-material/ContentCopy';
 import Logout from '@mui/icons-material/Logout';
+import { useState } from 'react';
 
 function UserMenu() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
-
   return (
     <>
-      <Button onClick={(e) => setAnchorEl(e.currentTarget)} aria-haspopup="true">
-        Account
-      </Button>
-      <Menu
-        anchorEl={anchorEl}
-        open={open}
-        onClose={() => setAnchorEl(null)}
-        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-      >
-        <MenuItem onClick={() => { navigate('/profile'); setAnchorEl(null); }}>
+      <Button onClick={(e) => setAnchorEl(e.currentTarget)}>Account</Button>
+      <Menu anchorEl={anchorEl} open={open} onClose={() => setAnchorEl(null)}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}>
+        <MenuItem onClick={() => { goProfile(); setAnchorEl(null); }}>
           <ListItemText>Profile</ListItemText>
-        </MenuItem>
-        <MenuItem>
-          <ListItemIcon><ContentCopy fontSize="small" /></ListItemIcon>
-          <ListItemText>Copy link</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem onClick={logout}>
@@ -1407,143 +1289,83 @@ function UserMenu() {
 ```tsx
 import { Breadcrumbs, Link, Typography, Pagination } from '@mui/material';
 
-{/* Breadcrumbs */}
-<Breadcrumbs aria-label="breadcrumb" separator="›">
+<Breadcrumbs separator="›" aria-label="breadcrumb">
   <Link underline="hover" color="inherit" href="/">Home</Link>
   <Link underline="hover" color="inherit" href="/products">Products</Link>
   <Typography color="text.primary">Sneakers</Typography>
 </Breadcrumbs>
 
-{/* Pagination */}
-const [page, setPage] = useState(1);
-
-<Pagination
-  count={10}
-  page={page}
-  onChange={(e, value) => setPage(value)}
-  color="primary"
-  shape="rounded"
-  showFirstButton
-  showLastButton
-/>
+<Pagination count={10} page={page} onChange={(_e, v) => setPage(v)}
+            color="primary" shape="rounded" showFirstButton showLastButton />
 ```
 
----
+### 8.5 Feedback & Overlays
 
-### Feedback & Overlays
+#### Dialog — modal for confirmations and forms
 
----
-
-#### Dialog
-
-Modal overlay for confirmations, forms, and important messages.
+Compose from `DialogTitle`, `DialogContent` (+ `DialogContentText`), and `DialogActions`. MUI traps focus inside and restores it on close — a key accessibility feature you get free.
 
 ```tsx
-import {
-  Dialog, DialogTitle, DialogContent, DialogContentText,
-  DialogActions, Button
-} from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogContentText,
+         DialogActions, Button } from '@mui/material';
 
-const [open, setOpen] = useState(false);
-
-<>
-  <Button variant="outlined" onClick={() => setOpen(true)}>
-    Open Dialog
-  </Button>
-
-  <Dialog
-    open={open}
-    onClose={() => setOpen(false)}
-    maxWidth="sm"   // 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false
-    fullWidth
-    aria-labelledby="dialog-title"
-  >
-    <DialogTitle id="dialog-title">Confirm Delete</DialogTitle>
-    <DialogContent>
-      <DialogContentText>
-        Are you sure you want to delete this item? This action cannot be undone.
-      </DialogContentText>
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={() => setOpen(false)}>Cancel</Button>
-      <Button onClick={handleDelete} color="error" variant="contained" autoFocus>
-        Delete
-      </Button>
-    </DialogActions>
-  </Dialog>
-</>
+<Dialog open={open} onClose={() => setOpen(false)}
+        maxWidth="sm" fullWidth aria-labelledby="confirm-title">
+  <DialogTitle id="confirm-title">Confirm Delete</DialogTitle>
+  <DialogContent>
+    <DialogContentText>
+      This action cannot be undone. Delete this item?
+    </DialogContentText>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpen(false)}>Cancel</Button>
+    <Button onClick={handleDelete} color="error" variant="contained" autoFocus>
+      Delete
+    </Button>
+  </DialogActions>
+</Dialog>
 ```
 
-#### Snackbar & Alert
+#### Snackbar & Alert — toasts and inline messages
 
-Brief notifications that slide in and auto-dismiss.
+`Snackbar` positions a transient, auto-dismissing notification. Put an `Alert` inside it for the colored severity styling. `Alert` standalone is an *inline* message (not a toast).
 
 ```tsx
-import { Snackbar, Alert, Button } from '@mui/material';
+import { Snackbar, Alert } from '@mui/material';
 
-const [open, setOpen] = useState(false);
+<Snackbar open={open} autoHideDuration={4000} onClose={() => setOpen(false)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+  <Alert onClose={() => setOpen(false)} severity="success"
+         variant="filled" sx={{ width: '100%' }}>
+    Saved successfully!
+  </Alert>
+</Snackbar>
 
-<>
-  <Button onClick={() => setOpen(true)}>Show Notification</Button>
-
-  <Snackbar
-    open={open}
-    autoHideDuration={4000}
-    onClose={() => setOpen(false)}
-    anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-  >
-    {/* Alert inside Snackbar for styled toasts */}
-    <Alert
-      onClose={() => setOpen(false)}
-      severity="success"   // 'error' | 'warning' | 'info' | 'success'
-      variant="filled"     // 'standard' | 'outlined' | 'filled'
-      sx={{ width: '100%' }}
-    >
-      File saved successfully!
-    </Alert>
-  </Snackbar>
-</>
-
-{/* Alert standalone (inline message, not a toast) */}
-<Alert severity="warning" sx={{ mb: 2 }}>
-  Your session expires in 5 minutes.
-</Alert>
+{/* Inline alert (always visible, not a toast). */}
+<Alert severity="warning" sx={{ mb: 2 }}>Your session expires in 5 minutes.</Alert>
 ```
 
-#### Backdrop & CircularProgress
+> **Best practice:** For app-wide toasts, build a small context/provider that exposes `notify(message, severity)` and renders a single `Snackbar`, instead of scattering Snackbar state across components.
+
+#### Progress, Backdrop, Skeleton — loading states
 
 ```tsx
-import { Backdrop, CircularProgress, LinearProgress } from '@mui/material';
+import { CircularProgress, LinearProgress, Backdrop, Skeleton,
+         Card, CardContent, Stack } from '@mui/material';
 
-{/* Full-screen loading overlay */}
-<Backdrop
-  sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
-  open={isLoading}
->
+{/* Indeterminate spinners/bars (unknown duration). */}
+<CircularProgress />
+<LinearProgress />
+{/* Determinate (known %): */}
+<LinearProgress variant="determinate" value={75} />
+
+{/* Full-screen blocking overlay. zIndex above the drawer. */}
+<Backdrop open={isLoading} sx={{ color: '#fff', zIndex: (t) => t.zIndex.drawer + 1 }}>
   <CircularProgress color="inherit" />
 </Backdrop>
 
-{/* Circular spinner (inline) */}
-<CircularProgress />
-<CircularProgress color="secondary" size={60} thickness={5} />
-
-{/* Determinate progress */}
-<CircularProgress variant="determinate" value={progress} />
-
-{/* Linear progress bar */}
-<LinearProgress />                                     {/* Indeterminate */}
-<LinearProgress variant="determinate" value={75} />   {/* 75% */}
-<LinearProgress variant="buffer" value={60} valueBuffer={80} />
-```
-
-#### Skeleton
-
-Placeholder loading state that matches the shape of expected content.
-
-```tsx
-import { Skeleton, Card, CardContent, Stack } from '@mui/material';
-
-{/* Match content shape */}
+{/* Skeleton — placeholder matching the content's SHAPE (better than a spinner
+    for perceived performance). Match the real layout for a seamless swap. */}
 {isLoading ? (
   <Card sx={{ maxWidth: 345 }}>
     <Skeleton variant="rectangular" height={194} />
@@ -1557,70 +1379,64 @@ import { Skeleton, Card, CardContent, Stack } from '@mui/material';
     </CardContent>
   </Card>
 ) : (
-  <ActualCard />
+  <RealCard />
 )}
-
-{/* Animation: 'pulse' (default) | 'wave' | false */}
-<Skeleton animation="wave" variant="rectangular" width={210} height={60} />
 ```
 
 ---
 
 ## 9. Icons — @mui/icons-material
 
-### Installation
+### What it is
+
+`@mui/icons-material` packages the entire Material Symbols set (~2,100 icons) as individual React components. Each icon is an SVG wrapped in MUI's `SvgIcon`, so it inherits `fontSize` and `color` from the theme just like text — that consistency is the point.
+
+### Install & import
 
 ```bash
 npm install @mui/icons-material
 ```
 
-### Usage
-
-Every icon is a React component. Import by name from the package.
-
 ```tsx
-// Named imports (best for tree-shaking)
+// ALWAYS prefer named PATH imports — they tree-shake to just that one icon.
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchIcon from '@mui/icons-material/Search';
-import HomeIcon from '@mui/icons-material/Home';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-// Or destructured (works but may pull more into bundle)
-import { Delete, Edit, Search } from '@mui/icons-material';
+// Each Material icon has style variants — suffix the name:
+import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined'; // outlined
+import HomeRoundedIcon from '@mui/icons-material/HomeRounded';   // rounded
+import HomeTwoToneIcon from '@mui/icons-material/HomeTwoTone';   // two-tone
 ```
 
-### Icon Props
+### Props
 
 ```tsx
-{/* size: 'small' | 'medium' | 'large' | custom sx */}
-<HomeIcon />                              {/* 24px default */}
-<HomeIcon fontSize="small" />            {/* 20px */}
-<HomeIcon fontSize="large" />            {/* 35px */}
-<HomeIcon sx={{ fontSize: 48 }} />       {/* Custom size */}
+{/* Size: fontSize keyword or sx override. */}
+<HomeIcon />                       {/* 24px (medium) */}
+<HomeIcon fontSize="small" />      {/* 20px */}
+<HomeIcon fontSize="large" />      {/* 35px */}
+<HomeIcon sx={{ fontSize: 48 }} /> {/* custom */}
 
-{/* color: any palette color or inherit */}
+{/* Color: any palette intention or a literal. */}
 <CheckCircleIcon color="success" />
 <DeleteIcon color="error" />
-<EditIcon color="action" />              {/* theme.palette.action.active */}
 <SearchIcon sx={{ color: 'primary.main' }} />
 ```
 
-### Finding Icon Names
-
-Browse all 2,000+ icons at `https://mui.com/material-ui/material-icons/`. The component name is the icon name in PascalCase + "Icon" suffix (or without — both work).
-
-```tsx
-import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';  // Outlined variant
-import HomeTwoToneIcon from '@mui/icons-material/HomeTwoTone';    // Two-tone variant
-import HomeRoundedIcon from '@mui/icons-material/HomeRounded';    // Rounded variant
-```
+> **Gotcha — the barrel import bombs your bundle.** `import { Delete, Edit } from '@mui/icons-material'` pulls the *entire* icon set into dev builds (thousands of modules → painfully slow HMR), and can bloat production if tree-shaking misfires. Use path imports: `import DeleteIcon from '@mui/icons-material/Delete'`. This is the single most common MUI performance mistake.
 
 ---
 
 ## 10. DataGrid — @mui/x-data-grid
 
-The DataGrid is MUI's most powerful premium component. The community version (`@mui/x-data-grid`) is free with pagination, sorting, and filtering.
+### What it is and when to reach for it
+
+The `DataGrid` is MUI's spreadsheet-grade table: sorting, filtering, pagination, column resizing/reordering, row selection, inline editing, CSV export, and (in the paid Pro/Premium tiers) virtualization for huge datasets, tree data, grouping, and aggregation. The **community** edition is free and covers sorting/filtering/pagination/selection — enough for most CRUD dashboards.
+
+Use it instead of the basic `Table` (§8.3) whenever you have *many rows* or need *interaction* (sort/filter/paginate). Use the plain `Table` for small static tables where the DataGrid's footprint isn't justified.
+
+The core mental model: you give it **`columns`** (definitions: which field, header, width, type, custom renderers) and **`rows`** (your data, each needing a unique `id`). The grid handles everything else.
 
 ### Install
 
@@ -1628,352 +1444,225 @@ The DataGrid is MUI's most powerful premium component. The community version (`@
 npm install @mui/x-data-grid
 ```
 
-### Basic Usage
+### Basic usage (client-side data)
 
 ```tsx
-import { DataGrid, GridColDef, GridValueGetterParams } from '@mui/x-data-grid';
+import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import { Box, Button } from '@mui/material';
+import { useState } from 'react';
 
-// Column definitions
+// Column definitions describe the SHAPE of the table.
 const columns: GridColDef[] = [
   { field: 'id', headerName: 'ID', width: 70 },
   { field: 'firstName', headerName: 'First name', width: 130 },
   { field: 'lastName', headerName: 'Last name', width: 130 },
   {
-    field: 'fullName',
-    headerName: 'Full name',
-    width: 160,
-    // Computed column — not in data
-    valueGetter: (value, row) => `${row.firstName || ''} ${row.lastName || ''}`,
+    field: 'fullName', headerName: 'Full name', width: 160,
+    // valueGetter computes a value not present in the row data.
+    // ⚡ v6/v7 signature: (value, row) — NOT the old params object.
+    valueGetter: (_value, row) => `${row.firstName ?? ''} ${row.lastName ?? ''}`,
   },
+  { field: 'age', headerName: 'Age', type: 'number', width: 90, editable: true },
   {
-    field: 'age',
-    headerName: 'Age',
-    type: 'number',
-    width: 90,
-    editable: true,
-  },
-  {
-    field: 'actions',
-    headerName: 'Actions',
-    width: 120,
-    sortable: false,
-    // Custom cell renderer
+    field: 'actions', headerName: 'Actions', width: 120, sortable: false,
+    // renderCell injects custom JSX into a cell. params.row is the full row.
     renderCell: (params) => (
-      <Button size="small" onClick={() => handleEdit(params.row)}>
-        Edit
-      </Button>
+      <Button size="small" onClick={() => editRow(params.row)}>Edit</Button>
     ),
   },
 ];
 
-// Row data
+// Rows: an array of objects. Each MUST have a unique `id` (or pass getRowId).
 const rows = [
-  { id: 1, lastName: 'Snow',    firstName: 'Jon',    age: 35 },
-  { id: 2, lastName: 'Lannister', firstName: 'Cersei', age: 42 },
-  { id: 3, lastName: 'Stark',   firstName: 'Arya',   age: 16 },
+  { id: 1, firstName: 'Jon', lastName: 'Snow', age: 35 },
+  { id: 2, firstName: 'Cersei', lastName: 'Lannister', age: 42 },
 ];
 
-// The component
 function UserTable() {
-  const [selectionModel, setSelectionModel] = useState<number[]>([]);
-
+  const [selection, setSelection] = useState<number[]>([]);
   return (
+    // The grid needs an explicit height (it doesn't grow with content).
     <Box sx={{ height: 400, width: '100%' }}>
       <DataGrid
         rows={rows}
         columns={columns}
-        // Pagination
-        initialState={{
-          pagination: { paginationModel: { page: 0, pageSize: 10 } },
-        }}
+        // initialState seeds uncontrolled features like pagination.
+        initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }}
         pageSizeOptions={[5, 10, 25]}
-        // Selection
         checkboxSelection
-        onRowSelectionModelChange={(ids) => setSelectionModel(ids as number[])}
-        // Filtering (built-in)
-        disableColumnFilter={false}
-        // Sorting
-        sortingOrder={['asc', 'desc']}
-        // Row click
+        onRowSelectionModelChange={(ids) => setSelection(ids as number[])}
         onRowClick={(params) => console.log(params.row)}
-        // Styling
-        sx={{
-          '& .MuiDataGrid-columnHeaders': { bgcolor: 'primary.main', color: '#fff' },
-        }}
+        // Style inner slots via the MuiDataGrid-* class names:
+        sx={{ '& .MuiDataGrid-columnHeaders': { bgcolor: 'primary.main', color: '#fff' } }}
       />
     </Box>
   );
 }
 ```
 
-### Server-Side Data
+### Server-side data (large datasets / API-backed)
+
+For big data you don't load everything into the browser. Switch the grid into *server mode* so it reports user intent (page change, sort, filter) via callbacks, and you fetch the matching slice from your API. Pair this with `TANSTACK_QUERY_GUIDE.md` for caching/loading.
 
 ```tsx
 <DataGrid
-  rows={rows}
+  rows={rows}                 // only the CURRENT page of rows
   columns={columns}
-  rowCount={totalCount}      // Total rows from API
-  paginationMode="server"    // Tell DataGrid not to paginate locally
+  rowCount={totalCount}       // total across all pages, from the API
+  paginationMode="server"     // grid no longer slices locally…
+  sortingMode="server"        // …it asks YOU to fetch sorted/filtered data
   filterMode="server"
-  sortingMode="server"
-  onPaginationModelChange={(model) => {
-    // Fetch new page from API
-    fetchData({ page: model.page, pageSize: model.pageSize });
-  }}
-  onSortModelChange={(model) => {
-    fetchData({ sortField: model[0]?.field, sortOrder: model[0]?.sort });
-  }}
-  loading={isFetching}
+  loading={isFetching}        // shows the built-in loading overlay
+  onPaginationModelChange={(m) => fetchData({ page: m.page, pageSize: m.pageSize })}
+  onSortModelChange={(m) => fetchData({ sortBy: m[0]?.field, sortDir: m[0]?.sort })}
+  onFilterModelChange={(m) => fetchData({ filters: m.items })}
 />
 ```
 
+> **⚡ Version note (v6/v7 API changes):** Several callbacks changed signatures between v5 and v6+. Most notably `valueGetter`/`valueFormatter` now receive `(value, row, column, apiRef)` instead of a single `params` object. If you copy an old snippet and `params.row` is undefined, this is why.
+
+> **Gotcha — "no rows / collapsed grid."** The DataGrid renders nothing visible if its container has no height. It does **not** auto-size to content. Give the wrapper a fixed `height`, or use the `autoHeight` prop (fine for small grids, not for virtualized large ones).
+
 ---
 
-## 11. Forms with MUI
+## 11. Forms with MUI + React Hook Form
 
-### Controlled Input Pattern
+Forms are where MUI components meet validation. There are two tiers: simple controlled state for tiny forms, and **React Hook Form (RHF)** for anything real. This section assumes RHF basics from `REACT_HOOK_FORM_GUIDE.md`.
 
-Always use controlled inputs (value + onChange) with MUI form components.
+### The controlled-state baseline (small forms)
+
+For a two-field form, plain `useState` is fine. The pattern: each `TextField` is controlled (`value` + `onChange`), and you validate on submit, feeding errors into `error`/`helperText`.
 
 ```tsx
-// Minimal login form — controlled
+import { Box, TextField, Button } from '@mui/material';
+import { useState } from 'react';
+
 function LoginForm() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  const change = (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
-  const validate = () => {
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
     const errs: Record<string, string> = {};
     if (!form.email.includes('@')) errs.email = 'Enter a valid email';
     if (form.password.length < 8) errs.password = 'Min 8 characters';
     setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validate()) {
-      // submit logic
-    }
+    if (Object.keys(errs).length === 0) { /* submit */ }
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
-      <TextField
-        name="email"
-        label="Email Address"
-        type="email"
-        value={form.email}
-        onChange={handleChange}
-        error={!!errors.email}
-        helperText={errors.email}
-        fullWidth
-        margin="normal"
-        required
-        autoFocus
-      />
-      <TextField
-        name="password"
-        label="Password"
-        type="password"
-        value={form.password}
-        onChange={handleChange}
-        error={!!errors.password}
-        helperText={errors.password}
-        fullWidth
-        margin="normal"
-        required
-      />
-      <Button type="submit" fullWidth variant="contained" sx={{ mt: 2, mb: 2 }}>
-        Sign In
-      </Button>
+    <Box component="form" onSubmit={submit} noValidate sx={{ maxWidth: 400 }}>
+      <TextField name="email" label="Email" type="email" fullWidth margin="normal"
+                 value={form.email} onChange={change}
+                 error={!!errors.email} helperText={errors.email} />
+      <TextField name="password" label="Password" type="password" fullWidth margin="normal"
+                 value={form.password} onChange={change}
+                 error={!!errors.password} helperText={errors.password} />
+      <Button type="submit" fullWidth variant="contained" sx={{ mt: 2 }}>Sign In</Button>
     </Box>
   );
 }
 ```
 
-### Integration with react-hook-form
+### Why React Hook Form for real forms
+
+`useState`-per-field re-renders the whole form on every keystroke and makes validation logic sprawl. **RHF** keeps inputs *uncontrolled* (reading values via refs), so typing in one field doesn't re-render the others — a big performance win on large forms — and centralizes validation (especially with a schema library like Zod). The trick is wiring RHF to MUI's components, which split into two cases.
+
+### The two integration patterns — the key distinction
+
+- **`register()`** works for components that expose a native `<input>` and forward standard `ref`/`onChange`/`onBlur`. MUI's `TextField` qualifies. Spread `{...register('field')}` onto it.
+- **`Controller`** is required for components that *don't* behave like a native input — `Select`, `Autocomplete`, `Checkbox`, `Switch`, `Slider`, date pickers. These have non-standard value/onChange shapes, so `Controller` adapts RHF's controlled API to them.
+
+That single rule — *native input → `register`; custom MUI control → `Controller`* — is the whole game.
 
 ```tsx
-// Install: npm install react-hook-form zod @hookform/resolvers
-import { useForm, Controller, SubmitHandler } from 'react-hook-form';
+// npm install react-hook-form zod @hookform/resolvers
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import {
-  TextField, Button, Box, FormControlLabel,
-  Checkbox, MenuItem, Select, FormControl, InputLabel
-} from '@mui/material';
+import { Box, TextField, Button, FormControl, InputLabel, Select, MenuItem,
+         FormControlLabel, Checkbox, FormHelperText } from '@mui/material';
 
+// 1) Schema = single source of truth for validation + inferred types.
 const schema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string().min(8, 'Min 8 characters'),
   role: z.string().min(1, 'Select a role'),
   agree: z.boolean().refine((v) => v, 'You must agree'),
 });
-
 type FormData = z.infer<typeof schema>;
 
 function RegistrationForm() {
-  const {
-    register,
-    control,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, control, handleSubmit, formState: { errors, isSubmitting } } =
+    useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { agree: false } });
 
-  const onSubmit: SubmitHandler<FormData> = async (data) => {
-    await registerUser(data);
-  };
+  const onSubmit: SubmitHandler<FormData> = async (data) => { await registerUser(data); };
 
   return (
     <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ maxWidth: 400 }}>
-
-      {/* TextField — use register() for simple inputs */}
-      <TextField
-        label="Email"
-        fullWidth
-        margin="normal"
+      {/* TextField → register(). Spread connects ref/name/onChange/onBlur. */}
+      <TextField label="Email" fullWidth margin="normal"
         {...register('email')}
-        error={!!errors.email}
-        helperText={errors.email?.message}
-      />
+        error={!!errors.email} helperText={errors.email?.message} />
 
-      <TextField
-        label="Password"
-        type="password"
-        fullWidth
-        margin="normal"
+      <TextField label="Password" type="password" fullWidth margin="normal"
         {...register('password')}
-        error={!!errors.password}
-        helperText={errors.password?.message}
-      />
+        error={!!errors.password} helperText={errors.password?.message} />
 
-      {/* Select — use Controller for components that don't use native onChange */}
-      <Controller
-        name="role"
-        control={control}
-        defaultValue=""
-        render={({ field }) => (
-          <FormControl fullWidth margin="normal" error={!!errors.role}>
-            <InputLabel>Role</InputLabel>
-            <Select {...field} label="Role">
-              <MenuItem value="user">User</MenuItem>
-              <MenuItem value="admin">Admin</MenuItem>
-            </Select>
-          </FormControl>
-        )}
-      />
+      {/* Select → Controller (Select's onChange/value aren't native-input-shaped). */}
+      <Controller name="role" control={control} render={({ field }) => (
+        <FormControl fullWidth margin="normal" error={!!errors.role}>
+          <InputLabel>Role</InputLabel>
+          <Select {...field} label="Role">
+            <MenuItem value="user">User</MenuItem>
+            <MenuItem value="admin">Admin</MenuItem>
+          </Select>
+          {errors.role && <FormHelperText>{errors.role.message}</FormHelperText>}
+        </FormControl>
+      )} />
 
-      {/* Checkbox — always use Controller */}
-      <Controller
-        name="agree"
-        control={control}
-        defaultValue={false}
-        render={({ field }) => (
-          <FormControlLabel
-            control={<Checkbox {...field} checked={field.value} />}
-            label="I agree to the terms"
-          />
-        )}
-      />
+      {/* Checkbox → Controller. Note `checked={field.value}` (boolean, not value). */}
+      <Controller name="agree" control={control} render={({ field }) => (
+        <FormControlLabel
+          control={<Checkbox {...field} checked={field.value} />}
+          label="I agree to the terms" />
+      )} />
+      {errors.agree && <FormHelperText error>{errors.agree.message}</FormHelperText>}
 
-      <Button
-        type="submit"
-        fullWidth
-        variant="contained"
-        disabled={isSubmitting}
-        sx={{ mt: 2 }}
-      >
-        {isSubmitting ? 'Registering...' : 'Register'}
+      <Button type="submit" fullWidth variant="contained"
+              disabled={isSubmitting} sx={{ mt: 2 }}>
+        {isSubmitting ? 'Registering…' : 'Register'}
       </Button>
     </Box>
   );
 }
 ```
 
-**Key rule:** Use `register()` for native HTML inputs (TextField, input, textarea). Use `Controller` (or `useController`) for custom MUI components that don't forward native HTML events (Select, Autocomplete, Checkbox, Slider, DatePicker).
+> **React 19 note:** React 19's Actions/`useActionState` and `<form action={fn}>` are an alternative for server-driven forms. They compose with MUI inputs (use `name` + `defaultValue`, read `FormData` on submit), but for rich client-side validation RHF + Zod remains the more ergonomic choice. See `REACT_19_GUIDE.md`.
+
+> **Gotcha — Checkbox value vs checked.** A `Controller`-wrapped `Checkbox` needs `checked={field.value}` explicitly; if you only spread `{...field}` the checkbox won't reflect/update its boolean state correctly.
 
 ---
 
 ## 12. Dark Mode & Theme Toggling
 
-### Method 1: Manual Palette Mode Toggle (simplest)
+There are two ways to do dark mode in MUI. The modern one (CSS variables + `colorSchemes`) is strongly preferred because it eliminates the SSR flash. The manual one is simpler to grasp and fine for client-only SPAs.
+
+### Method 1 (recommended): CSS variables + `colorSchemes` + `useColorScheme`
+
+⚡ **Version note:** Since v6, enabling `cssVariables: true` and defining `colorSchemes.light`/`colorSchemes.dark` lets MUI emit CSS custom properties and switch modes by toggling a `data-mui-color-scheme` attribute on `<html>` — *without re-rendering the React tree or recreating the theme*. Because the scheme can be set before hydration, there is **no flash of the wrong theme** on SSR. This is the right default for Next.js.
 
 ```tsx
-// providers.tsx
-'use client';
-
-import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
-import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
-
-// Context for toggling
-const ColorModeContext = createContext({ toggle: () => {} });
-export const useColorMode = () => useContext(ColorModeContext);
-
-export function ColorModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<'light' | 'dark'>('light');
-
-  const colorMode = useMemo(() => ({
-    toggle: () => setMode((prev) => (prev === 'light' ? 'dark' : 'light')),
-  }), []);
-
-  const theme = useMemo(() => createTheme({
-    palette: { mode },
-    // Other theme config...
-  }), [mode]);
-
-  return (
-    <ColorModeContext.Provider value={colorMode}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </ThemeProvider>
-    </ColorModeContext.Provider>
-  );
-}
-```
-
-```tsx
-// DarkModeToggle.tsx
-import { IconButton, Tooltip } from '@mui/material';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
-import { useTheme } from '@mui/material/styles';
-import { useColorMode } from './providers';
-
-export function DarkModeToggle() {
-  const theme = useTheme();
-  const { toggle } = useColorMode();
-
-  return (
-    <Tooltip title="Toggle dark mode">
-      <IconButton onClick={toggle} color="inherit">
-        {theme.palette.mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
-      </IconButton>
-    </Tooltip>
-  );
-}
-```
-
-### Method 2: useColorScheme (MUI v6+ CSS Variables)
-
-⚡ **Version note:** MUI v6 introduced `colorSchemes` + `useColorScheme` when you opt into **CSS variables mode**. This is the recommended approach for v6+ as it avoids a flash of unstyled content (FOUC) on SSR.
-
-```tsx
-// theme.ts — enable CSS variables mode
+// theme.ts — define BOTH schemes once.
 import { createTheme } from '@mui/material/styles';
 
-const theme = createTheme({
+export const theme = createTheme({
+  cssVariables: { colorSchemeSelector: 'class' }, // or true for the default selector
   colorSchemes: {
-    light: {
-      palette: {
-        primary: { main: '#1976d2' },
-      },
-    },
+    light: { palette: { primary: { main: '#1976d2' } } },
     dark: {
       palette: {
         primary: { main: '#90caf9' },
@@ -1982,26 +1671,24 @@ const theme = createTheme({
     },
   },
 });
-
-export default theme;
 ```
 
 ```tsx
-// DarkModeToggle.tsx — useColorScheme works without extra context
+// DarkModeToggle.tsx — useColorScheme reads/sets the mode. No custom context needed.
 'use client';
-import { useColorScheme, IconButton, Tooltip } from '@mui/material';
+import { useColorScheme } from '@mui/material/styles';
+import { IconButton, Tooltip } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 
 export function DarkModeToggle() {
   const { mode, setMode } = useColorScheme();
-
+  // mode can be 'light' | 'dark' | 'system' | undefined (before mount).
+  if (!mode) return null; // avoid hydration mismatch before the scheme is known
   return (
-    <Tooltip title="Toggle dark mode">
-      <IconButton
-        onClick={() => setMode(mode === 'light' ? 'dark' : 'light')}
-        color="inherit"
-      >
+    <Tooltip title="Toggle theme">
+      <IconButton color="inherit"
+                  onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
         {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
       </IconButton>
     </Tooltip>
@@ -2009,340 +1696,256 @@ export function DarkModeToggle() {
 }
 ```
 
-### Persisting Dark Mode to localStorage
+> MUI persists the chosen scheme to `localStorage` automatically and can follow the OS preference via `mode = 'system'`. That's a lot of behavior you'd otherwise hand-roll.
+
+### Method 2: manual palette-mode toggle (client-only)
+
+Recreate the theme when the mode changes. Simple, but the whole tree re-renders on toggle and it can flash under SSR — so use it only in SPAs.
 
 ```tsx
-// In the manual toggle approach — persist to localStorage
-const [mode, setMode] = useState<'light' | 'dark'>(() => {
-  if (typeof window !== 'undefined') {
-    return (localStorage.getItem('colorMode') as 'light' | 'dark') ?? 'light';
-  }
-  return 'light';
-});
+'use client';
+import { createTheme, ThemeProvider, CssBaseline } from '@mui/material';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
-const colorMode = useMemo(() => ({
-  toggle: () => setMode((prev) => {
-    const next = prev === 'light' ? 'dark' : 'light';
-    localStorage.setItem('colorMode', next);
-    return next;
-  }),
-}), []);
+const ColorModeContext = createContext({ toggle: () => {} });
+export const useColorMode = () => useContext(ColorModeContext);
+
+export function ColorModeProvider({ children }: { children: ReactNode }) {
+  // Initialize from localStorage so the choice survives reloads.
+  const [mode, setMode] = useState<'light' | 'dark'>(() =>
+    (typeof window !== 'undefined'
+      ? (localStorage.getItem('mode') as 'light' | 'dark')
+      : null) ?? 'light');
+
+  const colorMode = useMemo(() => ({
+    toggle: () => setMode((prev) => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('mode', next);
+      return next;
+    }),
+  }), []);
+
+  // Recreate the theme only when `mode` changes (memoized).
+  const theme = useMemo(() => createTheme({ palette: { mode } }), [mode]);
+
+  return (
+    <ColorModeContext.Provider value={colorMode}>
+      <ThemeProvider theme={theme}><CssBaseline />{children}</ThemeProvider>
+    </ColorModeContext.Provider>
+  );
+}
 ```
+
+> **Best practice:** Define mode-specific colors so dark mode is *designed*, not just inverted. Pure inversion often yields harsh contrast — set `background.default`/`paper` and tune `primary` for dark explicitly (as in Method 1).
 
 ---
 
 ## 13. Responsive Design
 
-MUI's default breakpoints (mobile-first):
+MUI is mobile-first: styles apply at a breakpoint *and up*. The breakpoint scale (min-widths) is the backbone:
 
-| Key | Min width | Typical use |
+| Key | Min width | Typical device |
 |---|---|---|
-| `xs` | 0px | Mobile phones |
-| `sm` | 600px | Tablets |
-| `md` | 900px | Small laptops |
+| `xs` | 0px | Phones |
+| `sm` | 600px | Large phones / small tablets |
+| `md` | 900px | Tablets / small laptops |
 | `lg` | 1200px | Desktops |
-| `xl` | 1536px | Large screens |
+| `xl` | 1536px | Large monitors |
 
-### Breakpoints in sx
+### Responsive `sx` (the everyday tool)
 
 ```tsx
-// sx responsive values
-<Box
-  sx={{
-    // Mobile: column, Desktop: row
-    display: 'flex',
-    flexDirection: { xs: 'column', md: 'row' },
-    gap: { xs: 1, md: 3 },
+<Box sx={{
+  display: 'flex',
+  flexDirection: { xs: 'column', md: 'row' }, // stack on phones, row on tablets+
+  gap: { xs: 1, md: 3 },
+  px: { xs: 2, sm: 4, lg: 8 },
+  fontSize: { xs: '0.875rem', md: '1rem' },
+}} />
 
-    // Show/hide per breakpoint
-    display: { xs: 'none', md: 'block' }, // Hide on mobile
-    display: { xs: 'block', md: 'none' }, // Show only on mobile
-
-    // Responsive font size
-    fontSize: { xs: '1rem', sm: '1.25rem', lg: '1.5rem' },
-
-    // Responsive padding
-    px: { xs: 2, sm: 4, lg: 8 },
-  }}
->
+{/* Show/hide per breakpoint — the responsive visibility idiom. */}
+<Box sx={{ display: { xs: 'none', md: 'block' } }}>Desktop only</Box>
+<Box sx={{ display: { xs: 'block', md: 'none' } }}>Mobile only</Box>
 ```
 
-### Breakpoints in styled()
+### Breakpoints inside `styled()`
 
 ```tsx
-const ResponsiveBox = styled(Box)(({ theme }) => ({
+import { styled } from '@mui/material/styles';
+import { Box } from '@mui/material';
+
+const Panel = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2),
-
-  [theme.breakpoints.up('md')]: {
-    padding: theme.spacing(4),
-    display: 'flex',
-  },
-
-  [theme.breakpoints.between('sm', 'lg')]: {
-    backgroundColor: theme.palette.grey[100],
-  },
-
-  [theme.breakpoints.down('sm')]: {
-    // Mobile-specific styles
-    flexDirection: 'column',
-  },
+  [theme.breakpoints.up('md')]:   { padding: theme.spacing(4), display: 'flex' },
+  [theme.breakpoints.down('sm')]: { flexDirection: 'column' },
+  [theme.breakpoints.between('sm', 'lg')]: { background: theme.palette.grey[100] },
 }));
 ```
 
-### useMediaQuery
+### `useMediaQuery` — responding in JS (not just CSS)
+
+When you must change *behavior* or *which component renders* (not merely styles), use the hook. It returns a boolean and re-renders on breakpoint changes.
 
 ```tsx
 import { useMediaQuery, useTheme } from '@mui/material';
 
-function AdaptiveComponent() {
+function Adaptive() {
   const theme = useTheme();
-
-  // Returns true if viewport >= md (900px)
-  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
-
-  // Boolean — re-renders when breakpoint changes
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-
-  // Custom query
-  const isLandscape = useMediaQuery('(orientation: landscape)');
-
-  // Prefers dark mode (system preference)
-  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
-
-  return (
-    <div>
-      {isDesktop ? <DesktopLayout /> : <MobileLayout />}
-    </div>
-  );
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));     // ≥ 900px
+  const isMobile  = useMediaQuery(theme.breakpoints.down('sm'));   // < 600px
+  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)'); // raw query
+  return isDesktop ? <DesktopLayout /> : <MobileLayout />;
 }
 ```
 
-### SSR + useMediaQuery (Next.js)
+> **Best practice — prefer CSS over JS for responsiveness.** Responsive `sx`/`styled` is rendered once and adapts purely in CSS. `useMediaQuery` causes a JS re-render and, under SSR, the server can't know the screen size (returns `false` first), risking a hydration flash. Use the hook only when you genuinely need to branch *logic* or swap whole components.
+
+### SSR caveat with `useMediaQuery`
 
 ```tsx
-// On the server, screen size is unknown — useMediaQuery returns false by default.
-// Use initializeMode for SSR if you need server-rendered responsive layouts.
-const isMobile = useMediaQuery(theme.breakpoints.down('md'), {
-  defaultMatches: true, // Assume mobile until hydration
-  noSsr: false,         // Allow SSR behavior
-});
+// On the server the viewport is unknown → defaults to no-match. To assume mobile
+// until hydration (avoids a desktop-then-mobile flash), set defaultMatches:
+const isMobile = useMediaQuery(theme.breakpoints.down('md'), { defaultMatches: true });
 ```
 
 ---
 
-## 14. Performance, Tips, Tricks & Gotchas
+## 14. Performance, Tips & Gotchas
 
-### Bundle Size — Tree-Shaking
+### Bundle size — imports that matter
 
 ```tsx
-// GOOD — named path imports (tree-shaked by bundler)
-import Button from '@mui/material/Button';
-import TextField from '@mui/material/TextField';
-import Grid from '@mui/material/Grid2';
+// Components: both forms tree-shake fine with modern bundlers.
+import { Button, TextField } from '@mui/material';        // OK
+import Button from '@mui/material/Button';                // also OK (explicit)
 
-// ALSO GOOD — named imports from main (modern bundlers handle this fine)
-import { Button, TextField } from '@mui/material';
-
-// AVOID for icons — always use direct path imports
-// BAD:
-import { Delete, Edit, Home } from '@mui/icons-material'; // pulls in ALL icons
-// GOOD:
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
+// Icons: ALWAYS path-import. The barrel import is the #1 perf footgun.
+import DeleteIcon from '@mui/icons-material/Delete';      // ✓
+// import { Delete } from '@mui/icons-material';          // ✗ pulls thousands of modules
 ```
 
-### sx vs styled() — Performance
+### `sx` vs `styled()` — the cost
 
 ```tsx
-// sx creates a new style object on every render — use for one-off/dynamic styles
-// styled() creates the style ONCE at component definition time — use for reusable components
+// sx: the style OBJECT is recreated each render (cheap, Emotion caches the class),
+//     but in long lists that adds up. Fine for one-offs and dynamic styles.
+<Box sx={{ display: 'flex', p: 2 }} />
 
-// Bad — creates a new class on every render due to inline object
-// (But still cached by Emotion — not as bad as it sounds for static values)
-<Box sx={{ display: 'flex', p: 2 }}>...</Box>
-
-// Better — for components rendered many times (e.g. in a list):
-const FlexBox = styled(Box)({ display: 'flex', padding: 16 });
-// Then use: <FlexBox>...</FlexBox>
+// styled(): base styles resolved ONCE at definition. Prefer for components that
+//           render many times (table rows, list items, repeated cards).
+const Row = styled(Box)({ display: 'flex', padding: 16 });
 ```
 
-### "use client" in Next.js App Router
+### Don't recreate the theme on render
 
 ```tsx
-// These MUI components REQUIRE 'use client' in Next.js App Router:
-// - Any component that uses hooks: useState, useEffect, useContext, useRef
-// - useTheme, useMediaQuery, useColorScheme
-// - Dialog, Drawer, Menu (useState-based open/close)
-// - Snackbar, Tooltip (event handlers)
-// - DataGrid (complex interaction)
-// - react-hook-form + Controller
-
-// Pattern: Create thin 'use client' wrapper components
-// Server: renders static content
-// Client: renders interactive islands
-
-'use client'; // Add this to any file that imports interactive MUI components
+const theme = createTheme({ /* … */ });   // ✓ module scope — created once
+function App() {
+  const bad = createTheme({ /* … */ });   // ✗ new object every render → full re-style
+}
 ```
 
-### Hydration Mismatches
+### z-index layering (use the theme, don't guess)
 
 ```tsx
-// Problem: useMediaQuery returns false on server, true on client → mismatch
-// Solution 1: defaultMatches option
-const isMobile = useMediaQuery(theme.breakpoints.down('md'), { defaultMatches: true });
+// MUI's z-index scale: mobileStepper 1000, fab 1050, speedDial 1050,
+// appBar 1100, drawer 1200, modal 1300, snackbar 1400, tooltip 1500.
+<Box sx={{ zIndex: (t) => t.zIndex.modal + 1 }}>Above any modal</Box>
+```
 
-// Solution 2: Render after mount
+### Hydration mismatches (Next.js)
+
+```tsx
+// useMediaQuery / useColorScheme can differ server vs client on first paint.
+// Option A: render after mount.
 const [mounted, setMounted] = useState(false);
 useEffect(() => setMounted(true), []);
-if (!mounted) return <Skeleton />; // Or null
-return <ActualComponent />;
+if (!mounted) return null;            // or a Skeleton
+// Option B: useColorScheme → guard on `mode` being defined (see §12).
+// Option C: useMediaQuery → { defaultMatches: true } (see §13).
 ```
 
-### Emotion SSR — Missing Styles
-
-```tsx
-// If you see unstyled flash on first load (SSR), ensure:
-// 1. AppRouterCacheProvider wraps everything (Next.js App Router)
-// 2. getInitialProps / _document.tsx setup (Next.js Pages Router)
-// 3. CssBaseline is inside ThemeProvider
-
-// Next.js Pages Router setup (_document.tsx)
-import createEmotionServer from '@emotion/server/create-instance';
-import createEmotionCache from '../lib/createEmotionCache';
-
-// This is more involved — see official MUI Next.js Pages Router example
-```
-
-### zIndex Management
-
-```tsx
-// MUI manages zIndex through the theme.zIndex object
-// Drawer: 1200, AppBar: 1100, Modal: 1300, Snackbar: 1400, Tooltip: 1500
-
-// Reference in sx:
-<Box sx={{ zIndex: (theme) => theme.zIndex.modal + 1 }}>
-  Above the modal
-</Box>
-```
-
-### Avoiding Double Scrollbars
-
-```tsx
-// CssBaseline sets html and body to height: 100%, which can cause issues.
-// Override if needed:
-<Box
-  component="main"
-  sx={{
-    flexGrow: 1,
-    overflow: 'auto',
-    height: '100vh',
-  }}
->
-```
-
-### Common Mistakes
+### Common mistakes → fixes
 
 | Mistake | Fix |
 |---|---|
-| Importing from `@mui/icons-material` barrel | Use direct path: `@mui/icons-material/IconName` |
-| `ThemeProvider` outside `AppRouterCacheProvider` | `AppRouterCacheProvider` must be the outermost wrapper |
-| Using `<Grid item xs={12}>` in v6 | Use `<Grid size={12}>` — no `item` prop in v6 |
-| `TextField` with no `label` and no `aria-label` | Always provide accessible label |
-| `Dialog` z-index behind custom elements | Use `theme.zIndex.modal` reference |
-| `useColorScheme` called without `colorSchemes` in createTheme | Add `colorSchemes` key or use manual mode approach |
-| Wrapping `Tooltip` around a disabled `Button` | Add `<span>` wrapper — disabled elements block pointer events |
-| Forgetting `key` on mapped `MenuItem` | Always key dynamic list items |
+| Barrel-importing icons | Path import: `@mui/icons-material/IconName` |
+| `ThemeProvider` outside `AppRouterCacheProvider` | Cache provider must be outermost (Next.js) |
+| Old `<Grid item xs={12}>` in v6/v7 | `<Grid size={12}>` — no `item` prop |
+| DataGrid renders blank | Give the wrapper a height (or `autoHeight`) |
+| `valueGetter`/`renderCell` using `params.row` | v6/v7 signature is `(value, row, …)` |
+| `TextField` controlled without `onChange` | Add `onChange`, or use `defaultValue` |
+| `Tooltip` on a disabled `Button` | Wrap the button in `<span>` |
+| Missing `key` on mapped `MenuItem`/`Grid` | Always key dynamic lists |
+| `useColorScheme` without `colorSchemes` | Add `colorSchemes` (or use manual mode) |
+| Recreating theme in render | Define at module scope |
 
-### Tips
+### Handy patterns
 
 ```tsx
-// Tip 1: sx accepts arrays for merging styles (useful in component APIs)
-<Box sx={[{ p: 2 }, isActive && { bgcolor: 'primary.light' }]}>
-  Content
-</Box>
+// Merge conditional styles via the sx array form:
+<Box sx={[{ p: 2 }, isActive && { bgcolor: 'primary.light' }]} />
 
-// Tip 2: Clone theme and extend it (nested ThemeProvider)
-import { createTheme, useTheme } from '@mui/material/styles';
-const outerTheme = useTheme();
-const innerTheme = createTheme(outerTheme, {
-  palette: { primary: { main: '#ff0000' } },
-});
-<ThemeProvider theme={innerTheme}>...</ThemeProvider>
-
-// Tip 3: Use 'component' prop to render MUI components as router Links
+// Render MUI components AS router links via `component`:
 import { Link as RouterLink } from 'react-router-dom';
 <Button component={RouterLink} to="/about">About</Button>
 <ListItemButton component={RouterLink} to="/profile">Profile</ListItemButton>
 
-// Tip 4: MUI's sx prop works on any element via the Box component
-// Use Box as a layout div instead of unstyled divs
-<Box component="section" sx={{ ... }}>...</Box>
-<Box component="span" sx={{ ... }}>...</Box>
-<Box component="article" sx={{ ... }}>...</Box>
+// Extend an outer theme in a nested provider (merge, don't replace):
+const inner = createTheme(useTheme(), { palette: { primary: { main: '#f00' } } });
+<ThemeProvider theme={inner}>…</ThemeProvider>
 
-// Tip 5: Avoid re-creating theme on every render
-// createTheme is expensive — define it OUTSIDE the component tree
-const theme = createTheme({ ... }); // module scope ✓
-function App() {
-  const theme = createTheme({ ... }); // BAD — recreates every render ✗
-}
+// Use Box for semantic, styled layout elements instead of bare divs:
+<Box component="section" sx={{ py: 6 }}>…</Box>
 ```
 
 ---
 
-## 15. Study Path
+## 15. Study Path & Build-to-Learn Projects
 
-Follow this sequence to build real intuition, not just memorize the API.
+Build, don't just read. Each phase ends in a project that forces the concepts into your fingers.
 
-### Phase 1 — Foundation (Week 1)
+### Phase 1 — Foundation (Week 1) **[B]**
+1. Scaffold a Vite + React 19 app; install MUI + Emotion; wire `ThemeProvider` + `CssBaseline`.
+2. Style entirely with `sx`: build a profile card from `Box`, `Avatar`, `Typography`, `Button`.
+3. Customize the theme: change `primary.main`, `typography.fontFamily`, `shape.borderRadius`; watch it cascade.
 
-1. **Install + setup:** Create a Vite React project with MUI + Emotion. Wire up `ThemeProvider` and `CssBaseline`.
-2. **Learn `sx`:** Build a profile card using only `Box`, `Typography`, `Avatar`, and `Button` with `sx` for all styling.
-3. **Theme basics:** Customize `primary.main`, `typography.fontFamily`, and `shape.borderRadius`. See it change everywhere.
+**Build:** a polished profile card.
 
-**Build:** A personal profile card component.
+### Phase 2 — Layout (Week 2) **[B/I]**
+4. Build an app shell (top nav, sidebar, main, footer) with `Box` flexbox only.
+5. Convert spaced groups to `Stack`.
+6. Build a responsive image gallery with the new `Grid` (`size={{ xs:12, sm:6, md:4, lg:3 }}`).
+7. Wrap page content in `Container maxWidth="lg"`.
 
-### Phase 2 — Layout Mastery (Week 2)
+**Build:** a responsive landing page.
 
-4. **Box + Flexbox:** Build a page layout (top nav, sidebar, main content, footer) using only `Box`.
-5. **Stack:** Refactor all "vertical spaced elements" to use `Stack spacing`.
-6. **Grid v6:** Build a responsive image gallery — 1 column on mobile, 2 on tablet, 4 on desktop.
-7. **Container:** Wrap page content in `Container` with `maxWidth="lg"`.
+### Phase 3 — Forms (Week 3) **[I]**
+8. Controlled sign-up form: `TextField`, `Select`, `Checkbox`, `Switch`.
+9. Add manual validation with `error`/`helperText`.
+10. Refactor to React Hook Form + Zod — `register` for TextFields, `Controller` for Select/Checkbox.
 
-**Build:** A fully responsive landing page.
+**Build:** a validated multi-section registration form.
 
-### Phase 3 — Forms (Week 3)
+### Phase 4 — Navigation & feedback (Week 4) **[I]**
+11. Responsive `AppBar` + `Drawer` (hamburger on mobile, links on desktop).
+12. Add `Tabs`, a confirmation `Dialog`, and a global `Snackbar`/`Alert` toast system.
 
-8. **Controlled inputs:** Build a sign-up form with `TextField`, `Select`, `Checkbox`, `Switch`.
-9. **Validation:** Add manual validation with error states and helper text.
-10. **react-hook-form + zod:** Refactor the form to use `react-hook-form` with `Controller` for non-native components.
+**Build:** an admin dashboard shell with toasts.
 
-**Build:** A multi-step registration form.
+### Phase 5 — Data & advanced (Week 5) **[A]**
+13. `DataGrid` with sorting, filtering, pagination over a fake API; then switch to server mode.
+14. Dark mode via `cssVariables` + `colorSchemes` + `useColorScheme`.
+15. Global restyle of `Button`/`TextField`/`Card` via `components.styleOverrides` + `defaultProps`.
+16. Rebuild the dashboard in Next.js App Router with `AppRouterCacheProvider` + the client provider pattern (§3).
 
-### Phase 4 — Navigation & Patterns (Week 4)
+**Build:** a full CRUD user-management dashboard (Next.js, dark mode, DataGrid, RHF forms).
 
-11. **AppBar + Drawer:** Build a responsive navigation — hamburger menu on mobile, horizontal nav on desktop.
-12. **Tabs:** Add a tabbed content section.
-13. **Dialog:** Add a confirmation dialog for a destructive action.
-14. **Snackbar + Alert:** Add toast notifications for success and error states.
-
-**Build:** A full admin dashboard shell (nav + sidebar + content area + toasts).
-
-### Phase 5 — Data & Advanced (Week 5)
-
-15. **DataGrid:** Fetch a list of users from a fake API and display in a DataGrid with sorting, filtering, and pagination.
-16. **Dark mode:** Implement a dark/light toggle using `colorSchemes` + `useColorScheme`.
-17. **Theme overrides:** Globally restyle `Button`, `TextField`, and `Card` via `components.styleOverrides`.
-18. **Next.js App Router:** Migrate or rebuild the dashboard in Next.js with `AppRouterCacheProvider` + client provider pattern.
-
-**Build:** A full CRUD user management dashboard.
-
-### Phase 6 — Polish (Ongoing)
-
-- Read the official MUI docs for every component you use (they have excellent prop tables and demos).
-- Explore the MUI component playground at `https://mui.com/material-ui/`.
-- Study MUI's free templates for real-world composition patterns.
-- Practice theming: build the same layout with 3 different brand color palettes.
+### Phase 6 — Mastery (ongoing)
+- Read each component's official prop table the first time you use it.
+- Reskin one layout with three different brand palettes to internalize theming.
+- Profile bundle size; confirm icon path-imports; audit `sx` in long lists → promote to `styled()`.
+- Study MUI's free templates for real composition patterns.
 
 ---
 
@@ -2350,16 +1953,18 @@ Follow this sequence to build real intuition, not just memorize the API.
 
 | Task | Code |
 |---|---|
-| Install | `npm install @mui/material @emotion/react @emotion/styled` |
-| Theme setup | `createTheme({})` → `<ThemeProvider theme={theme}>` |
-| CSS reset | `<CssBaseline />` inside `<ThemeProvider>` |
-| Spacing unit | `theme.spacing(1)` = 8px (default) |
-| sx shorthand px | `sx={{ px: 2 }}` = `padding-left/right: 16px` |
+| Install | `npm i @mui/material @emotion/react @emotion/styled` |
+| Theme | `createTheme({})` → `<ThemeProvider theme={theme}>` |
+| CSS reset | `<CssBaseline />` inside `ThemeProvider` |
+| Spacing unit | `theme.spacing(1)` = 8px |
+| sx padding | `sx={{ px: 2 }}` = left/right 16px |
 | Responsive sx | `sx={{ fontSize: { xs: '1rem', md: '1.5rem' } }}` |
-| Grid v6 | `<Grid size={{ xs: 12, md: 6 }}>` |
-| Dark mode | `createTheme({ colorSchemes: { light: {}, dark: {} } })` + `useColorScheme()` |
+| Grid (v6/v7) | `<Grid container><Grid size={{ xs:12, md:6 }}>…` |
+| Dark mode | `cssVariables:true` + `colorSchemes` + `useColorScheme()` |
 | useMediaQuery | `useMediaQuery(theme.breakpoints.up('md'))` |
-| Global override | `createTheme({ components: { MuiButton: { styleOverrides: { root: {} } } } })` |
-| Icons import | `import DeleteIcon from '@mui/icons-material/Delete'` |
-| Router link | `<Button component={RouterLink} to="/path">` |
+| Global override | `components: { MuiButton: { styleOverrides: { root: {} } } }` |
+| Icon import | `import DeleteIcon from '@mui/icons-material/Delete'` |
+| Router link | `<Button component={RouterLink} to="/x">` |
 | Next.js SSR | `<AppRouterCacheProvider>` → `<Providers>` → children |
+| RHF + MUI | `register()` for TextField; `Controller` for Select/Checkbox |
+| DataGrid | `<DataGrid rows={} columns={} />` in a fixed-height `Box` |
