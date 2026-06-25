@@ -19,6 +19,7 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | [Go (Golang) — Complete Language Reference](library/GO_GUIDE.md) | **Pure-language** beginner→mastery: philosophy & toolchain, packages/modules, types/zero values, strings/runes/UTF-8, control flow & `defer`, slices (header/aliasing)/maps/structs, pointers, methods & **interfaces** (implicit), errors (`%w`/`Is`/`As`), generics, **concurrency** (goroutines/channels/`select`/`sync`/`context`/patterns), stdlib tour, testing/fuzzing, modules/tooling, perf/GC/pprof, security, gotchas | 2781 |
 | [Go — Language & Production Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) | Go language beginner→advanced (slices, interfaces, errors, generics, concurrency) **plus** production design patterns — clean/hexagonal architecture, **repository, factory, adapter, DI, strategy/functional options, middleware** — with a complete Gin example + testing | 3054 |
 | [Rust](library/RUST_GUIDE.md) | 2024 edition: **ownership/borrowing/lifetimes** explained patiently, structs/enums/`Option`/`Result`, traits & generics, collections & iterators, smart pointers, modules, concurrency & async/tokio, **`std::fs`/`std::process`/OS**, macros, testing | 2529 |
+| [PHP](library/PHP_GUIDE.md) | **Modern PHP 8.4** (+ 8.5 flagged), June-2026 current: setup/CLI/FPM/Composer, the typed syntax & `match`, functions/closures, **arrays in depth**, OOP (typed/readonly props, constructor promotion, interfaces/traits, **enums**), the modern type system (**property hooks & asymmetric visibility**, union/intersection), namespaces/PSR-4, errors, **File System/OS/`proc_open`/exec**, JSON/dates/PCRE, **PDO & injection-safe prepared statements**, web (superglobals/sessions/**XSS/CSRF/`password_hash`**), Composer/PSRs, attributes/generators/**Fibers**, **PHPUnit/Pest + PHPStan**, OPcache/JIT, security | 2351 |
 
 ### Web Fundamentals
 | Guide | What it covers | Lines |
@@ -44,6 +45,11 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 |---|---|---|
 | [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md) | How RN works (Metro/Hermes/JSI/**New Architecture**), RN vs native vs Flutter, **core components** & native mapping, styling/flexbox, **Expo Router**, device/SDK APIs, **FlatList performance**, Reanimated & gestures, platform-specific code, **EAS Build/Submit/Update (OTA)**, testing, shipping | 2728 |
 | [Android (Android Studio, Kotlin)](library/ANDROID_STUDIO_GUIDE.md) | **Project/folder structure** & the **Layout Editor**, Gradle/version catalogs, activity lifecycle & intents, **Jetpack Compose** + state, MVVM/ViewModel/StateFlow/Hilt, RecyclerView vs LazyColumn, Room/DataStore, Retrofit, coroutines/Flow, permissions, navigation, debugging/profiling, signing/publishing | 2320 |
+
+### Backend — PHP (Laravel)
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Laravel](library/LARAVEL_GUIDE.md) | **Laravel 12** (PHP 8.2+, June-2026 current; L13 flagged): the **request lifecycle** & the **slimmed L11+ skeleton** (`bootstrap/app.php`, no Kernel.php), setup (installer/**Herd**/**Sail**), routing & **route model binding**, controllers/requests/responses, **Blade** + the new **React/Vue/Livewire starter kits** (Inertia/Volt), **the service container & DI**, service providers, **Eloquent in depth** (migrations, relationships, **N+1/eager loading**, casts, factories), query builder & transactions, **form-request validation**, middleware, **auth** (Gates/Policies, **Sanctum** SPA+API, Fortify/Socialite), **REST APIs** (API Resources), **queues/jobs/Horizon**, **events & broadcasting (Reverb)**, Artisan & scheduling, cache/Redis, mail/notifications, storage, **Pest/PHPUnit testing**, production (**Octane**/Forge/Vapor, Nginx+FPM), security | 2705 |
 
 ### Backend — Node.js
 | Guide | What it covers | Lines |
@@ -144,6 +150,9 @@ Cross-platform: [React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](
 
 **⑪ Server & systems administration (SysAdmin / DBA)**
 Start with [Networking](library/NETWORKING_GUIDE.md) (the wire under everything), then pick your OS: [Linux Server Administration](library/LINUX_SERVER_ADMIN_GUIDE.md) (pair with [Bash](library/BASH_SCRIPTING_GUIDE.md)) and/or [Windows Server Administration](library/WINDOWS_SERVER_ADMIN_GUIDE.md) (pair with [PowerShell](library/POWERSHELL_GUIDE.md)). Then run the data tier with [Database Server Administration](library/DATABASE_SERVER_ADMIN_GUIDE.md) (pair with the engine guides: [PostgreSQL](library/POSTGRESQL_GUIDE.md) / [MongoDB](library/MONGODB_GUIDE.md) / [Redis](library/REDIS_GUIDE.md)). Put it in production behind [Nginx](library/NGINX_GUIDE.md), package with [Docker](library/DOCKER_GUIDE.md), and automate via [CI/CD](library/GITHUB_ACTIONS_CICD_GUIDE.md). This track takes you from first login to company-level operations.
+
+**⑫ Full-stack with PHP & Laravel**
+[PHP](library/PHP_GUIDE.md) (learn the modern, typed language first) → [Laravel](library/LARAVEL_GUIDE.md) (routing → Blade → the container/DI → **Eloquent** → validation → auth/Sanctum → APIs → queues/events → testing) → a database ([PostgreSQL](library/POSTGRESQL_GUIDE.md) / [SQLite3](library/SQLITE3_GUIDE.md), design with [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md)) → [Redis](library/REDIS_GUIDE.md) (cache/queues) → ship behind [Nginx + PHP-FPM](library/NGINX_GUIDE.md) in [Docker](library/DOCKER_GUIDE.md). For a JS frontend on Laravel's starter kits, see [React 19](library/REACT_19_GUIDE.md).
 
 ---
 
