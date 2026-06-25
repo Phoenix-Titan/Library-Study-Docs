@@ -28,7 +28,8 @@
 13. [Performance & Production](#13-performance--production) **[A]**
 14. [Architecture & Maintainability](#14-architecture--maintainability) **[A]**
 15. [Gotchas & Best Practices](#15-gotchas--best-practices) **[I/A]**
-16. [Study Path & Build-to-Learn Projects](#16-study-path--build-to-learn-projects)
+16. [Worked Example — A Production Scroll-Telling Page (Next.js 16)](#16-worked-example--a-production-scroll-telling-page-nextjs-16) **[A]**
+17. [Study Path & Build-to-Learn Projects](#17-study-path--build-to-learn-projects)
 
 ---
 
@@ -849,6 +850,116 @@ ScrollTrigger.batch(".card", {
 });
 ```
 
+### 8.8 Snapping to sections [A]
+
+`snap` makes the scroll position **settle onto meaningful points** after the user stops scrolling — the basis of "full-page section" sites. It works *with* a scrubbed animation: you snap to the progress values you care about. The simplest form snaps to evenly-spaced steps; the array form snaps to specific progress positions; the object form gives you control over duration and inertia.
+
+```js
+// Snap a scrubbed timeline to 5 evenly-spaced stops (0, .25, .5, .75, 1):
+ScrollTrigger.create({
+  trigger: ".panels",
+  start: "top top",
+  end: "+=3000",
+  pin: true,
+  scrub: 1,
+  snap: {
+    snapTo: 1 / 4,          // a number = snap to increments of this (5 stops here)
+    duration: { min: 0.2, max: 0.6 }, // clamp the settle time
+    delay: 0.1,             // wait after scroll stops before snapping
+    ease: "power1.inOut",
+    inertia: false,         // ignore flick velocity; always snap to nearest
+  },
+});
+
+// Snap to specific labels of a timeline (great for narrative steps):
+snap: { snapTo: "labelsDirectional" }   // snaps to timeline labels, in the scroll direction
+```
+
+> **⚡ Gotcha:** snapping fights the user if `duration` is too long or you snap too aggressively on a long page — it can feel like the page is "grabbing" the scroll. Use a short duration, a small `delay`, and only snap where discrete stops are genuinely meaningful (panels, steps), never on free-flowing content.
+
+### 8.9 Horizontal scroll driven by vertical scrolling [A]
+
+One of the most-requested effects: a **horizontal section** that scrolls sideways while the user scrolls down. The recipe is "pin a tall-enough region and tween the track's `x` against scroll progress." The key insight is computing the distance to travel from the track's actual width, and setting `end` to that distance so the pin lasts exactly as long as the horizontal travel.
+
+```jsx
+"use client";
+import { useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
+gsap.registerPlugin(ScrollTrigger, useGSAP);
+
+export default function HorizontalScroll() {
+  const root = useRef(null);
+  const track = useRef(null);
+
+  useGSAP(() => {
+    const panels = gsap.utils.toArray(".panel", track.current);
+    // Distance to travel = total track width minus one viewport.
+    const distance = () => track.current.scrollWidth - window.innerWidth;
+
+    gsap.to(track.current, {
+      x: () => -distance(),          // function = re-evaluated on ScrollTrigger.refresh()
+      ease: "none",
+      scrollTrigger: {
+        trigger: root.current,
+        pin: true,
+        scrub: 1,
+        // end is also a function of distance, so it's correct after resize:
+        end: () => "+=" + distance(),
+        invalidateOnRefresh: true,   // recompute x/end when the layout changes (CRITICAL here)
+        anticipatePin: 1,
+      },
+    });
+  }, { scope: root });
+
+  return (
+    <section ref={root} className="overflow-hidden">
+      <div ref={track} className="flex w-max">
+        {[1, 2, 3, 4].map((n) => (
+          <div key={n} className="panel w-screen h-screen grid place-items-center">Panel {n}</div>
+        ))}
+      </div>
+    </section>
+  );
+}
+```
+
+> **Why the functions matter:** `x` and `end` are written as **functions**, not fixed numbers. With `invalidateOnRefresh: true`, ScrollTrigger re-runs them on every `refresh()` (resize, font load, orientation change), so the horizontal distance stays correct. Hard-coding a pixel value is the #1 reason horizontal-scroll sections break on mobile or after the layout shifts.
+
+### 8.10 Parallax, progress & the callback API [A]
+
+ScrollTrigger exposes **lifecycle callbacks** and a live **progress** value (0→1) that you can read for effects beyond a single scrubbed tween — progress bars, parallax layers at different speeds, and triggering side effects (analytics, lazy media, nav highlighting).
+
+```js
+// Multi-layer parallax: each layer moves a different amount against the same scroll.
+gsap.utils.toArray(".layer").forEach((layer) => {
+  const depth = layer.dataset.depth || 1;          // e.g. data-depth="0.3"
+  gsap.to(layer, {
+    yPercent: -20 * depth,                          // farther layers move less
+    ease: "none",
+    scrollTrigger: { trigger: layer.closest(".scene"), scrub: true, start: "top bottom", end: "bottom top" },
+  });
+});
+
+// A reading-progress bar + callbacks for side effects:
+ScrollTrigger.create({
+  trigger: "article",
+  start: "top top",
+  end: "bottom bottom",
+  onUpdate: (self) => {
+    // self.progress is 0→1; self.direction is 1 (down) or -1 (up); self.velocity is px/s.
+    gsap.set(".progress-bar", { scaleX: self.progress, transformOrigin: "left center" });
+  },
+  onEnter:     () => console.log("entered"),
+  onLeave:     () => markSectionRead(),    // fire once when scrolled past
+  onEnterBack: () => highlightNav("article"),
+  onLeaveBack: () => unhighlightNav("article"),
+});
+```
+
+> **Best practice:** prefer **`scrub` + a tween** over reading `progress` in `onUpdate` and manually setting styles — GSAP's scrub is smoother and frame-throttled. Reach for `onUpdate`/`progress` only when you need a value GSAP can't tween directly (driving a canvas, a WebGL uniform, a React state update — and if you set React state here, throttle it, or you'll re-render every frame).
+
 ---
 
 ## 9. Next.js Specifics — `"use client"`, SSR & Hydration
@@ -1162,6 +1273,83 @@ const onOpen = () => {
 
 **Why Flip + React is a power combo:** you keep writing idiomatic React (change state, re-render) and Flip retrofits smooth motion onto layout changes you'd otherwise be unable to animate. It's the GSAP analogue to Motion's `layout` prop, but works across arbitrary DOM and reparenting.
 
+### 11.5 The Flip options that matter, in depth [A]
+
+`Flip.from(state, vars)` accepts options that solve the real-world problems you hit once you go past the basic case:
+
+| Option | What it does | When you need it |
+|---|---|---|
+| `absolute: true` | Temporarily positions the flipping targets `absolute` during the animation | Reparenting, or when surrounding layout would otherwise reflow mid-flip (the most common fix for "the flip looks janky") |
+| `absoluteOnLeave: true` | Absolutely positions only *leaving* elements | Smooth removal without collapsing siblings early |
+| `nested: true` | Correctly handles a flipping element **inside** another flipping element | Cards that move *and* contain moving children |
+| `scale: true` | Animates size via `scaleX/scaleY` (transform) instead of `width/height` (layout) | Performance — transforms are GPU-friendly; use unless scaling distorts text/borders |
+| `onEnter` / `onLeave` | Callbacks to animate elements that newly **appear** / **disappear** between states | Filtering/adding/removing items (see 11.6) |
+| `targets` | Limit the flip to a subset of the captured state | You captured a broad state but only want some elements to animate |
+| `props` | Also animate non-layout CSS props (e.g. `backgroundColor`, `borderRadius`) through the flip | A card that changes color *and* position in one motion |
+| `simple: true` | Skip rotation/skew matrix math for a small perf win | Flat translate/scale only, no rotated ancestors |
+
+`Flip.fit(target, source, vars)` is a different, underused tool: it **resizes/repositions one element to match another** (without the capture/apply dance) — perfect for "make this box exactly cover that box," picture-in-picture, or snapping a draggable into a slot.
+
+```js
+// Make the #player element morph to exactly fit whichever container is active:
+Flip.fit("#player", activeContainer, { duration: 0.6, ease: "power2.inOut", scale: true, absolute: true });
+```
+
+### 11.6 Entering & leaving elements during a Flip (filter/sort a list) [A]
+
+The killer React use case: a filtered/sorted list where items **stay** (move to new positions), **leave** (animate out), and **enter** (animate in) — all in one coordinated motion. Capture the state of everything *before* the data change, let React re-render, then `Flip.from` with `onEnter`/`onLeave` handlers and a stagger.
+
+```jsx
+"use client";
+import { useRef, useState } from "react";
+import gsap from "gsap";
+import { Flip } from "gsap/Flip";
+import { useGSAP } from "@gsap/react";
+gsap.registerPlugin(Flip, useGSAP);
+
+export default function FilterableGrid({ items }) {
+  const root = useRef(null);
+  const [filter, setFilter] = useState("all");
+  const stateRef = useRef(null);
+
+  // Capture BEFORE the filter state change re-renders the list:
+  const setFilterAnimated = (next) => {
+    stateRef.current = Flip.getState(".item", { props: "opacity" });
+    setFilter(next);
+  };
+
+  // After re-render, flip from the captured state. `filter` in deps drives it.
+  useGSAP(() => {
+    if (!stateRef.current) return;
+    Flip.from(stateRef.current, {
+      duration: 0.5,
+      ease: "power2.inOut",
+      scale: true,
+      absolute: true,                 // smooth reflow as items reposition
+      stagger: 0.04,
+      // Items that are NEW this render (weren't in the captured state):
+      onEnter: (els) =>
+        gsap.fromTo(els, { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.4, stagger: 0.04 }),
+      // Items leaving (in the state but gone now) — Flip keeps them around to animate out:
+      onLeave: (els) =>
+        gsap.to(els, { opacity: 0, scale: 0.8, duration: 0.3 }),
+    });
+  }, { scope: root, dependencies: [filter] });
+
+  const visible = filter === "all" ? items : items.filter((i) => i.tag === filter);
+  return (
+    <div ref={root}>
+      <nav>{["all", "a", "b"].map((f) => <button key={f} onClick={() => setFilterAnimated(f)}>{f}</button>)}</nav>
+      <div className="grid grid-cols-3 gap-4">
+        {visible.map((i) => <div key={i.id} data-flip-id={i.id} className="item">{i.label}</div>)}
+      </div>
+    </div>
+  );
+}
+```
+
+> **The mental model:** `Flip.getState` is a *snapshot* of positions/sizes; React then freely changes the DOM; `Flip.from` *diffs* the live DOM against the snapshot and animates the difference — moving survivors, and handing you new/removed elements via `onEnter`/`onLeave`. The `data-flip-id` is what lets Flip match an element across the re-render even if React recreated the node. This is the single most powerful GSAP+React pattern; master it and most "how do I animate this list change?" questions answer themselves.
+
 ---
 
 ## 12. Responsive & Accessible Animation
@@ -1421,11 +1609,132 @@ Let React own *structure* and GSAP own *motion*. Don't have GSAP add/remove DOM 
 
 ---
 
-## 16. Study Path & Build-to-Learn Projects
+## 16. Worked Example — A Production Scroll-Telling Page (Next.js 16)
+
+This section ties the whole guide together into **one realistic, production-shaped component**: a scroll-telling section that pins, plays a scrubbed multi-stage timeline as you scroll, reveals content on enter, respects reduced-motion, survives resize, and cleans up perfectly on route change. Every decision here reflects a rule from earlier sections — read the comments as a checklist of *why*, not just *what*.
+
+### 16.1 The structure & the FOUC-free strategy [A]
+
+The cardinal SSR rule (§9.3): **set the "animated-from" state in CSS, not JS**, so the server-rendered HTML already looks right and there's no flash before hydration. We hide/offset the animated bits with a class, then GSAP animates *from* that state and clears it. We also gate everything behind `prefers-reduced-motion` (§12.2) and scope all of it through `useGSAP` (§7) so cleanup is automatic.
+
+```css
+/* scene.module.css — the initial state lives in CSS so SSR matches the pre-animation frame */
+.fadeUp   { opacity: 0; transform: translateY(40px); }      /* GSAP animates FROM this, then clears it */
+.panel    { min-height: 100svh; display: grid; place-items: center; }
+@media (prefers-reduced-motion: reduce) {
+  .fadeUp { opacity: 1; transform: none; }                  /* reduced-motion users see the final state immediately */
+}
+```
+
+### 16.2 The component [A]
+
+```jsx
+"use client";                                   // §9.1 — GSAP is browser-only; this whole tree is client
+import { useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
+import styles from "./scene.module.css";
+
+gsap.registerPlugin(ScrollTrigger, useGSAP);     // §9.2 — register once, in client code
+
+export default function ScrollStory() {
+  const root = useRef(null);                      // scope element — every selector is resolved within it
+
+  useGSAP(() => {
+    // §12.2 — honor reduced motion. matchMedia auto-reverts when the query stops matching,
+    // and its cleanup is tied to useGSAP's scope, so we get correct teardown for free.
+    const mm = gsap.matchMedia();
+
+    mm.add(
+      { motionOK: "(prefers-reduced-motion: no-preference)" },
+      (ctx) => {
+        if (!ctx.conditions.motionOK) return;     // reduced-motion users: CSS already shows final state, do nothing
+
+        // 1) Reveal-on-enter for every .fadeUp (clearProps so the inline styles don't linger — §15.4)
+        gsap.utils.toArray(`.${styles.fadeUp}`, root.current).forEach((el) => {
+          gsap.from(el, {
+            opacity: 0, y: 40, duration: 0.8, ease: "power2.out", clearProps: "opacity,transform",
+            scrollTrigger: { trigger: el, start: "top 85%", toggleActions: "play none none reverse" }, // §8.3
+          });
+        });
+
+        // 2) A pinned, scrubbed multi-stage timeline — the "story" beats (§5 + §8.2/8.4)
+        const tl = gsap.timeline({
+          scrollTrigger: {
+            trigger: ".pinned",
+            start: "top top",
+            end: "+=2000",                         // pin lasts 2000px of scroll
+            pin: true,
+            scrub: 1,                              // §8.3 — tie progress to scroll, 1s catch-up smoothing
+            anticipatePin: 1,
+            invalidateOnRefresh: true,             // §8.9 — recompute on resize/font-load
+            snap: { snapTo: "labelsDirectional", duration: 0.3, ease: "power1.inOut" }, // §8.8 — settle on beats
+          },
+        });
+        tl.addLabel("beat1")
+          .to(".headline", { xPercent: -10, opacity: 1, ease: "none" })
+          .addLabel("beat2")
+          .from(".bg-layer", { yPercent: 20, ease: "none" }, "<")   // parallax against the same scroll (§8.10)
+          .addLabel("beat3")
+          .to(".caption", { opacity: 1, y: 0, ease: "none" });
+
+        // 3) A reading-progress bar driven by the section's own progress (§8.10)
+        ScrollTrigger.create({
+          trigger: root.current,
+          start: "top top",
+          end: "bottom bottom",
+          onUpdate: (self) =>
+            gsap.set(".progress", { scaleX: self.progress, transformOrigin: "left center" }),
+        });
+      }
+    );
+    // No manual cleanup needed: useGSAP reverts everything created in this scope on unmount/route change (§7.2, §9.5).
+  }, { scope: root });
+
+  return (
+    <main ref={root}>
+      <div className="progress" style={{ position: "fixed", top: 0, left: 0, height: 3, width: "100%", background: "tomato", transform: "scaleX(0)", zIndex: 50 }} />
+      <section className={styles.panel}><h1 className={styles.fadeUp}>Scroll to begin</h1></section>
+
+      <section className="pinned" style={{ position: "relative", overflow: "hidden" }}>
+        <div className="bg-layer" style={{ position: "absolute", inset: 0, background: "linear-gradient(#222,#000)" }} />
+        <h2 className="headline" style={{ opacity: 0.2, position: "relative" }}>The story unfolds</h2>
+        <p className="caption" style={{ opacity: 0, transform: "translateY(20px)", position: "relative" }}>…one beat at a time.</p>
+      </section>
+
+      <section className={styles.panel}><p className={styles.fadeUp}>The end — content continues normally.</p></section>
+    </main>
+  );
+}
+```
+
+### 16.3 What this example demonstrates (the checklist) [A]
+
+Every rule in the guide shows up here — this is the mental checklist for *any* production GSAP+React scene:
+
+| Concern | How it's handled here | Section |
+|---|---|---|
+| Client-only | `"use client"` on the whole tree | §9.1 |
+| Register once | `registerPlugin` at module top | §9.2 |
+| No FOUC | Initial state in CSS module, `clearProps` after | §9.3 / §15.4 |
+| Reduced motion | `matchMedia` gate; CSS shows final state | §12.2 |
+| Scoped + auto-cleanup | `useGSAP({ scope })`; nothing manual | §7.2 |
+| Route-change safety | `useGSAP` reverts on unmount | §9.5 |
+| Scrub vs reveal | `scrub` for the story, `toggleActions` for reveals | §8.3 |
+| Pin correctness on resize | `invalidateOnRefresh` + functional ends | §8.9 |
+| Snap to beats | `snapTo: "labelsDirectional"` | §8.8 |
+| Parallax & progress | layered `yPercent` + `onUpdate` bar | §8.10 |
+
+> **Make it yours:** drop this into a Next.js 16 app, then extend it — add a `SplitText` headline (§10.1), swap the pinned section for the **horizontal scroll** recipe (§8.9), or make the final panel a **Flip** gallery (§11.6). Resize the window and reload mid-scroll to confirm `invalidateOnRefresh` keeps the pin honest, and navigate away with React DevTools open to confirm zero orphan tweens.
+
+---
+
+## 17. Study Path & Build-to-Learn Projects
 
 Knowledge sticks when you build. Follow this progression; each project layers new concepts on the last, and each is framed in **Next.js 16 + React 19** with `useGSAP` and proper cleanup so you practice the production workflow from day one.
 
-### 16.1 The learning sequence
+### 17.1 The learning sequence
 
 1. **Fundamentals (Sections 1–4).** Install `gsap` + `@gsap/react`. In a single `"use client"` component, animate a box with `to`/`from`/`fromTo`/`set`. Cycle through every ease family until you can predict the feel from the name. Build a relative-value playground (`"+="`, `xPercent`).
 2. **Timelines & stagger (Sections 5–6).** Build a multi-step intro timeline using the position parameter and labels. Add a staggered list reveal. Make the whole timeline play/pause/reverse from buttons (store it in a ref).
@@ -1435,7 +1744,7 @@ Knowledge sticks when you build. Follow this progression; each project layers ne
 6. **Plugins & Flip (Sections 10–11).** Add a SplitText hero (with `revert` and fonts-ready refresh), a DrawSVG signature, and a Flip-powered filterable gallery.
 7. **Polish (Sections 12–15).** Audit accessibility (reduced motion, SplitText revert, no scroll-jacking), profile in the Performance panel, refactor animations into reusable hooks/components, and apply the gotchas checklist.
 
-### 16.2 Build-to-learn projects (Next.js 16, all with `useGSAP`)
+### 17.2 Build-to-learn projects (Next.js 16, all with `useGSAP`)
 
 - **Scroll-telling landing page.** A long-scroll page with pinned sections, scrubbed parallax layers, and reveal-on-enter content. Practices ScrollTrigger pin/scrub/toggleActions, `matchMedia` responsiveness, and FOUC-free SSR. The capstone of scroll work.
 - **Animated navigation.** A header whose menu opens via a paused timeline (`play`/`reverse` on hover/click), with staggered items and a morphing hamburger→close icon (MorphSVG). Practices timelines-in-refs, `contextSafe`, and a plugin.
@@ -1443,7 +1752,7 @@ Knowledge sticks when you build. Follow this progression; each project layers ne
 - **SplitText hero.** A landing hero where the headline animates in by characters/words/lines on load, correctly handling fonts-ready timing, FOUC prevention, accessibility `revert`, and reduced-motion fallback. Practices SplitText end-to-end and a11y discipline.
 - **Stretch: an interactive product showcase** combining ScrollSmoother, MotionPath, Draggable+Inertia, and a master timeline — the "everything plugin" project that forces clean architecture (reusable hooks, centralized eases/durations, and rigorous cleanup).
 
-### 16.3 Where to go next
+### 17.3 Where to go next
 
 Compare your GSAP solutions against equivalent **[Motion (animation)](MOTION_ANIMATION_GUIDE.md)** implementations to internalize the imperative-vs-declarative tradeoff and learn when to reach for each. Strengthen the foundations with the **[JavaScript](JAVASCRIPT_GUIDE.md)**, **[React 19](REACT_19_GUIDE.md)**, **[Next.js 16](NEXTJS_16_GUIDE.md)**, **[CSS](CSS_GUIDE.md)**, and **[Tailwind CSS](TAILWIND_CHEATSHEET.md)** guides — GSAP sits on top of all of them, and the better you know the rendering pipeline and React lifecycle, the more confidently you'll animate.
 
