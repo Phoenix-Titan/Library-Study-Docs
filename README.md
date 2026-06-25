@@ -82,7 +82,14 @@ A self-contained, **offline-first** collection of in-depth technical guides plus
 | Guide | What it covers | Lines |
 |---|---|---|
 | [Docker & Docker Compose](library/DOCKER_GUIDE.md) | Containers vs VMs (namespaces/cgroups), the CLI, **Dockerfile instructions in depth** (CMD vs ENTRYPOINT, layer caching), **multi-stage builds** for tiny images, volumes & networking, env/secrets, **Compose** multi-service stacks, **security hardening** (non-root/distroless/scanning), image optimization, deployment | 1552 |
+| [Nginx](library/NGINX_GUIDE.md) | The event-driven architecture (C10k), the config model & **`location` matching**, static serving, **reverse proxy** (headers/WebSockets), **load balancing** (algorithms/health checks), **API gateway** (routing, **rate limiting**, `auth_request`, CORS), **TLS/HTTP-2/3**, **caching** & compression, **security hardening**, performance tuning, real-world configs | 1929 |
 | [FTP Server — Go & Node](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) | How FTP works (control/data, **active vs passive**), **FTP vs FTPS vs SFTP** (the security distinction), Go (`ftpserverlib`) + Node (`ftp-srv`) servers, FTPS/TLS & SFTP skeletons, user isolation, passive-port/firewall/Docker config, and a thorough **security** section | 1820 |
+
+### Version Control & DevOps
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Git](library/GIT_GUIDE.md) | **The mental model** (working dir/staging/repo, snapshots & the object model), commits & `.gitignore`, branching/merging & **conflict resolution**, remotes (`fetch` vs `pull`), **rebasing** (& the golden rule), **undoing things** (`reset`/`revert`/`reflog`), stashing, `bisect`/`blame`, tags, **collaboration workflows** & PRs, hooks/submodules/worktrees/LFS, `--force-with-lease`, removing secrets from history | 1895 |
+| [CI/CD with GitHub Actions](library/GITHUB_ACTIONS_CICD_GUIDE.md) | CI vs Delivery vs Deployment, the workflow/job/step/runner model, **triggers** (incl. the `pull_request_target` landmine), contexts/expressions/`if:`, **matrix builds** & `needs` DAG, **caching & artifacts v4**, **secrets & security** (least-privilege `GITHUB_TOKEN`, **SHA-pinning**, **OIDC** keyless auth), reusable/composite actions, **environments & approvals**, worked **production pipelines** (Node/Go/Docker→GHCR), deployment strategies, hardening | 1988 |
 
 ### Shells & Scripting
 | Guide | What it covers | Lines |
@@ -121,7 +128,10 @@ Cross-platform: [React 19](library/REACT_19_GUIDE.md) → [React Native + Expo](
 **⑧ Shells & scripting (automation)**
 [Bash](library/BASH_SCRIPTING_GUIDE.md) (Linux/macOS/CI/Git Bash) · [PowerShell](library/POWERSHELL_GUIDE.md) (modern Windows + cross-platform automation) · [Windows CMD & Batch](library/WINDOWS_CMD_BATCH_GUIDE.md) (legacy/`.bat`, still everywhere). On Windows, learn PowerShell for new work and CMD for reading existing scripts.
 
-**⑨ Specialized**
+**⑨ Version control, CI/CD & deployment (DevOps)**
+[Git](library/GIT_GUIDE.md) (master the model first) → [CI/CD with GitHub Actions](library/GITHUB_ACTIONS_CICD_GUIDE.md) (automate test/build/deploy) → [Docker](library/DOCKER_GUIDE.md) (package it) → [Nginx](library/NGINX_GUIDE.md) (reverse proxy / load balancer / API gateway in front of your app). Pair with [Bash](library/BASH_SCRIPTING_GUIDE.md) for pipeline scripting.
+
+**⑩ Specialized**
 [Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) — service-to-service APIs · [Go File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) — tooling & scripts · [Rust](library/RUST_GUIDE.md) — systems/performance · [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) — file-transfer services.
 
 ---
