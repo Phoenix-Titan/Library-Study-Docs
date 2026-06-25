@@ -1054,39 +1054,126 @@ Get-IscsiTarget | Connect-IscsiTarget -IsPersistent $true
 
 ### 12.1 Windows Defender Firewall with Advanced Security **[I]**
 
-Windows has a **stateful, profile-aware host firewall** that is **on by default** and should *stay* on (turning it off is a common, dangerous mistake). It has three **profiles** — **Domain** (connected to your AD network), **Private** (trusted home/lab), **Public** (untrusted) — each with its own ruleset, and a default of **block inbound / allow outbound**. You add **inbound rules** to permit the services this server offers (RDP, SMB, the app's port) and, in high-security environments, **outbound rules** too. At scale you push these via **Group Policy** (§6) so every server gets identical rules.
+Windows has a **stateful, profile-aware host firewall** that is **on by default** and should *stay* on (turning it off is a common, dangerous mistake — "stateful" means it automatically permits the return traffic of connections the server itself initiated, so you only ever write rules for *new* inbound flows). It has three **profiles** — **Domain** (the adapter is talking to a reachable AD domain controller), **Private** (a network you've marked trusted, e.g. a lab), **Public** (untrusted, the safe default for an unidentified network) — each with its own independent ruleset, and a default action of **block inbound / allow outbound**. Windows picks the profile **per network adapter** based on what that adapter is connected to, so a multi-homed server can have one NIC in the Domain profile and another in Public simultaneously. You add **inbound rules** to permit the services this server offers (RDP, SMB, the app's port) and, in high-security environments, **outbound rules** too. At scale you push these via **Group Policy** (§6) so every server gets identical, auditable rules.
 
 ```powershell
-# State and profiles:
+# State and profiles — confirm it's ON and see each profile's default actions:
 Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
-Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True   # keep it ON
+Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True   # keep it ON, all profiles
+
+# Which profile is each adapter using right now? (explains why a rule does/doesn't apply)
+Get-NetConnectionProfile | Select-Object InterfaceAlias, NetworkCategory
 
 # Allow a specific inbound app port from a specific subnet only (least exposure):
 New-NetFirewallRule -DisplayName "App HTTPS 8443" -Direction Inbound -Action Allow `
   -Protocol TCP -LocalPort 8443 -RemoteAddress 10.0.0.0/24 -Profile Domain
 
-# Enable a built-in rule group instead of crafting rules by hand:
+# Enable a built-in rule GROUP instead of crafting rules by hand (RDP, SMB, etc.):
 Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-Get-NetFirewallRule -Enabled True -Direction Inbound | Select-Object DisplayName, Profile, Action
+Get-NetFirewallRule -Enabled True -Direction Inbound |
+  Select-Object DisplayName, Profile, Action, @{n='Port';e={($_ | Get-NetFirewallPortFilter).LocalPort}}
 ```
 
-> **Security best practice:** Default-deny inbound; open only the exact ports needed; scope rules to **specific remote subnets**; manage rules centrally via GPO so they're consistent and auditable. **Never** "disable the firewall to test" and forget to re-enable it.
+**The key parameters you'll actually tune on a rule:** `-Direction` (Inbound/Outbound), `-Action` (Allow/Block — and **Block always wins over Allow** when rules conflict), `-Protocol` + `-LocalPort`/`-RemotePort`, `-RemoteAddress`/`-LocalAddress` (scope to subnets — your single most useful least-exposure lever), `-Program` (restrict to one executable), `-Service` (restrict to one service), and `-Profile`. Scope every "open" rule as tightly as the service allows.
 
-### 12.2 NIC teaming / SET **[I]**
+> **Security best practice:** Default-deny inbound; open only the exact ports needed; scope rules to **specific remote subnets** (and to the program/service where possible); manage rules centrally via GPO so they're consistent and auditable. **Never** "disable the firewall to test" and forget to re-enable it.
 
-**NIC Teaming** bonds multiple physical network adapters into one logical NIC for **fault tolerance** (survive a cable/port failure) and **bandwidth aggregation**. **⚡ Version note:** the classic **LBFO** teaming is legacy; on Hyper-V hosts the modern approach is **Switch Embedded Teaming (SET)** integrated with the virtual switch.
+### 12.2 Firewall logging & troubleshooting "what got blocked?" **[I]**
+
+The firewall's most common operational question is *"my app/RDP/SMB can't connect — is the firewall dropping it, and which rule?"* By default **dropped packets are silent**, which makes this maddening. The fix is to **turn on drop logging**, reproduce the failure, and read the log — then you know whether it's the firewall at all (vs. routing, the app not listening, or a credential issue), and exactly which port to open.
 
 ```powershell
-# Classic LBFO team (non-Hyper-V hosts):
+# Turn on logging of DROPPED packets for a profile (allowed packets optional & noisy):
+Set-NetFirewallProfile -Profile Domain,Public `
+  -LogBlocked True -LogFileName "%SystemRoot%\System32\LogFiles\Firewall\pfirewall.log" -LogMaxSizeKilobytes 16384
+
+# Reproduce the failing connection, then read the recent DROP lines (it's a space-delimited text log):
+Get-Content "$env:SystemRoot\System32\LogFiles\Firewall\pfirewall.log" -Tail 20
+#   format: date time ACTION PROTOCOL src-ip dst-ip src-port dst-port ... path  -> look for "DROP ... <port>"
+
+# Cross-check the OTHER possibilities so you don't blame the firewall wrongly:
+Get-NetTCPConnection -State Listen -LocalPort 8443   # is the app actually LISTENING on that port?
+Test-NetConnection -ComputerName 10.0.0.10 -Port 8443  # run FROM the client: TcpTestSucceeded?
+```
+
+The disciplined flow: **(1)** confirm the service is *listening* (`Get-NetTCPConnection -State Listen`); **(2)** test reachability from the client (`Test-NetConnection -Port`); **(3)** if it fails, enable `LogBlocked`, reproduce, and look for the `DROP` on that port; **(4)** add a tightly-scoped Allow rule. This separates a firewall problem from an app-not-running or routing problem in under a minute — see the layered debugging ladder in the [Networking](NETWORKING_GUIDE.md) guide for the same logic generalized.
+
+> **GPO-vs-local gotcha:** firewall rules from **Group Policy and local rules are *merged*** — a setting in `wf.msc` (the Windows Firewall with Advanced Security console) can show rules you didn't create locally because they came from a GPO, and a GPO can also turn *off* "apply local rules." If a rule "won't delete" or a local Allow has no effect, it's almost always coming from (or being overridden by) GPO. Check with `Get-NetFirewallRule -PolicyStore ActiveStore` (effective) vs the local store.
+
+### 12.3 Connection Security Rules & IPsec — encrypting and isolating server traffic **[A]**
+
+Firewall rules decide *whether* a packet is allowed; **Connection Security Rules** decide whether traffic between two hosts must be **authenticated and/or encrypted** using **IPsec**. This is how you do **domain/server isolation** — a zero-trust pattern where, for example, *only domain-authenticated machines may even talk to a sensitive server*, and that traffic is encrypted on the wire **without changing the application**. It's the Windows-native answer to "encrypt internal east-west traffic," analogous to a service mesh's mTLS (see the [Networking](NETWORKING_GUIDE.md) guide's TLS/zero-trust sections).
+
+The model has two independent halves that work together: a **Connection Security Rule** negotiates the IPsec security association (who must authenticate, with what method — Kerberos/computer-cert — and whether to encrypt), and then **firewall rules can *require* that security** (e.g. "allow inbound SQL **only from authenticated, encrypted** connections").
+
+```powershell
+# 1) Require authentication (and optionally encryption) for traffic to this server,
+#    using the machines' AD (Kerberos) identities — "server isolation":
+New-NetIPsecRule -DisplayName "Isolate: require auth inbound" `
+  -InboundSecurity Require -OutboundSecurity Request `
+  -Phase1AuthSet (Get-NetIPsecPhase1AuthSet)[0].Name `
+  -Profile Domain
+
+# 2) Now make a firewall rule that ONLY admits authenticated peers (members of a group),
+#    so non-domain or untrusted machines are blocked even on an "open" port:
+New-NetFirewallRule -DisplayName "SQL from authenticated app servers only" `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 1433 `
+  -Authentication Required -Encryption Required `
+  -RemoteMachine "D:(A;;CC;;;<SID-of-AppServers-group>)"   # restrict to a computer group
+
+Get-NetIPsecRule | Select-Object DisplayName, InboundSecurity, OutboundSecurity, Profile
+```
+
+> **When to reach for this:** regulated/sensitive workloads (cardholder data, health records) that must prove east-west encryption and restrict access to known machines; isolating a tier of servers so a compromised non-member box on the same subnet *can't even open a socket* to them. It's powerful but adds operational complexity — pilot it carefully (a misconfigured "Require" rule can lock out management traffic), and always leave yourself an out-of-band path.
+
+### 12.4 NIC teaming / SET — link redundancy & aggregation **[I]**
+
+**NIC Teaming** bonds multiple physical network adapters into one logical NIC for **fault tolerance** (survive a cable, switch-port, or NIC failure with no dropped connections) and **bandwidth aggregation** (combine throughput). The two design knobs are the **teaming mode** — **Switch Independent** (no switch config needed; the most common, works across two switches for redundancy) vs **LACP/Static** (the switch participates, needed for true inbound load-spreading) — and the **load-balancing algorithm** (**Dynamic** is the modern default; **Hyper-V Port** is used on virtualization hosts to pin each VM to a NIC). **⚡ Version note:** the classic **LBFO** (`*-NetLbfoTeam`) teaming is legacy and **not used for Hyper-V**; on Hyper-V hosts the modern approach is **Switch Embedded Teaming (SET)**, created as part of the virtual switch so host and VM traffic share the team.
+
+```powershell
+# Classic LBFO team (non-Hyper-V hosts) — two NICs, switch-independent, dynamic balancing:
 New-NetLbfoTeam -Name "Team1" -TeamMembers "Ethernet","Ethernet 2" `
   -TeamingMode SwitchIndependent -LoadBalancingAlgorithm Dynamic
-# Modern SET (created with the vSwitch on Hyper-V hosts):
+Get-NetLbfoTeam        # health: are both members 'Up'?  Get-NetLbfoTeamMember for per-NIC state
+
+# Modern SET (created WITH the vSwitch on Hyper-V hosts — do NOT pre-team the NICs):
 New-VMSwitch -Name "SET-Switch" -NetAdapterName "Ethernet","Ethernet 2" -EnableEmbeddedTeaming $true
 ```
 
-### 12.3 Routing & RRAS **[I]**
+> **Gotcha:** never put a team *and* Hyper-V on the same NICs the old LBFO way — use SET. And a two-NIC switch-independent team gives you **failover and outbound** aggregation but not full inbound aggregation without switch-side LACP; size expectations accordingly.
 
-Windows Server can route between networks, run a VPN, or do NAT via the **Routing and Remote Access Service (RRAS)** role. In modern environments dedicated appliances usually handle this, but RRAS still serves for site VPNs, simple routing, and lab gateways. Add it with `Install-WindowsFeature RemoteAccess -IncludeManagementTools` and configure via the **Routing and Remote Access** console or `Add-VpnConnection`/`netsh routing` equivalents.
+### 12.5 Routing, NAT & RRAS **[I]**
+
+Windows Server can route between networks, terminate a **VPN**, or do **NAT** via the **Routing and Remote Access Service (RRAS)** role. In modern environments dedicated firewalls/appliances usually own this, but RRAS still serves real needs: **site-to-site VPNs**, a simple software router/NAT for a lab or branch, and **Always On VPN** / remote-access gateways for clients. Add it and manage it like any other role:
+
+```powershell
+Install-WindowsFeature RemoteAccess, Routing -IncludeManagementTools
+# Then configure via the "Routing and Remote Access" console (rrasmgmt.msc): enable routing/NAT,
+# add a VPN, or publish a static route. View the routing table & add a persistent route:
+Get-NetRoute -AddressFamily IPv4 | Sort-Object DestinationPrefix
+New-NetRoute -DestinationPrefix "192.168.50.0/24" -InterfaceAlias "Ethernet" -NextHop 10.0.0.254
+```
+
+### 12.6 Diagnosing the network stack from the server **[I]**
+
+When something on the wire misbehaves, these are the first-response tools — the Windows equivalents of the `ip`/`ss`/`dig`/`tcpdump` toolkit in the [Networking](NETWORKING_GUIDE.md) guide. Work *up* the stack: link → IP/route → DNS → port → packets.
+
+```powershell
+Get-NetIPConfiguration                         # IP, gateway, DNS per adapter (the `ipconfig /all` overview)
+Test-NetConnection example.com -Port 443       # one-shot: DNS + ping + TCP connect (TcpTestSucceeded)
+Test-NetConnection -ComputerName dc01 -DiagnoseRouting   # path/route detail to a target
+Resolve-DnsName _ldap._tcp.contoso.com -Type SRV         # is AD's DNS answering? (domain-join failures)
+Get-NetTCPConnection -State Established | Sort-Object RemoteAddress | Select -First 20   # who's connected
+Get-DnsClientCache | Where-Object Entry -like "*contoso*"   # what's cached (stale-DNS bugs); Clear-DnsClientCache to flush
+
+# Built-in packet capture (no Wireshark install needed) — pktmon, then convert to a .pcapng for analysis:
+pktmon start --capture --pkt-size 0 -f C:\caps\net.etl
+# ...reproduce the issue...
+pktmon stop
+pktmon etl2pcap C:\caps\net.etl -o C:\caps\net.pcapng      # open in Wireshark (Networking guide §13)
+```
+
+> **The Windows networking triage order:** `Get-NetConnectionProfile` (right firewall profile?) → `Get-NetIPConfiguration` (IP/gateway/DNS sane?) → `Resolve-DnsName` (DNS, especially the AD SRV records) → `Test-NetConnection -Port` (does the TCP handshake complete?) → firewall `LogBlocked` (§12.2) → `pktmon` (see the actual packets). Most "server unreachable" tickets are solved by step 3 or 4 — usually **DNS pointing at the wrong server** or a **missing/over-scoped firewall rule**.
 
 ---
 
