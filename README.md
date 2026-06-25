@@ -21,6 +21,8 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 | [Go](library/GO_GUIDE.md) · [Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) | **Go 1.25 / 1.26** |
 | [Rust](library/RUST_GUIDE.md) | Rust **2024 edition**, stable toolchain |
 | [PHP](library/PHP_GUIDE.md) | **PHP 8.4** (8.5 from Nov 2025 flagged) |
+| [C](library/C_GUIDE.md) | **C23** (+ C17 baseline), GCC 14/15 · Clang 18/19 |
+| [C++](library/CPP_GUIDE.md) | **C++23** (C++26 flagged), GCC 14/15 · Clang 18/19 · MSVC |
 | **Web fundamentals** | |
 | [HTML](library/HTML_GUIDE.md) | **HTML Living Standard** (WHATWG, 2026) |
 | [CSS](library/CSS_GUIDE.md) | **Modern/baseline CSS 2026** (`:has()`, container queries, nesting, `oklch`) |
@@ -34,9 +36,15 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 | [Tailwind CSS](library/TAILWIND_CHEATSHEET.md) | **v4** (Oxide engine, CSS-first `@theme`) |
 | [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | current `shadcn` CLI + React 19 + Tailwind v4 |
 | [Material UI](library/MATERIAL_UI_GUIDE.md) | MUI **v6 & v7** + React 19 |
+| [GSAP + React/Next.js](library/GSAP_GUIDE.md) | **GSAP 3.13+** (all plugins now free) + `@gsap/react` `useGSAP()` + React 19 / Next 16 |
 | **Mobile** | |
 | [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md) | **Expo SDK 54**, **React Native 0.81+** (New Architecture), React 19 |
 | [Android (Android Studio)](library/ANDROID_STUDIO_GUIDE.md) | 2026 Android toolchain + **Jetpack Compose** |
+| **Backend — Python** | |
+| [FastAPI](library/FASTAPI_GUIDE.md) | **FastAPI 0.115+** + **Pydantic v2** + SQLAlchemy 2.0 + Python 3.13/3.14 |
+| [Django](library/DJANGO_GUIDE.md) | **Django 5.2 LTS & 6.0** + **DRF** + Python 3.12–3.14 |
+| **Backend — Java** | |
+| [Spring Boot](library/SPRING_BOOT_GUIDE.md) | **Spring Boot 3.4/3.5** (SB 4 flagged) + Spring Framework 6.2 + **Java 21 LTS** |
 | **Backend — PHP** | |
 | [Laravel](library/LARAVEL_GUIDE.md) | **Laravel 12** (PHP 8.2+; **L13** ~Q1 2026 flagged) |
 | **Backend — Node.js** | |
@@ -93,6 +101,8 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 | [Go — Language & Production Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) | Go language beginner→advanced (slices, interfaces, errors, generics, concurrency) **plus** production design patterns — clean/hexagonal architecture, **repository, factory, adapter, DI, strategy/functional options, middleware** — with a complete Gin example + testing | 3054 |
 | [Rust](library/RUST_GUIDE.md) | 2024 edition: **ownership/borrowing/lifetimes** explained patiently, structs/enums/`Option`/`Result`, traits & generics, collections & iterators, smart pointers, modules, concurrency & async/tokio, **`std::fs`/`std::process`/OS**, macros, testing | 2529 |
 | [PHP](library/PHP_GUIDE.md) | **Modern PHP 8.4** (+ 8.5 flagged), June-2026 current: setup/CLI/FPM/Composer, the typed syntax & `match`, functions/closures, **arrays in depth**, OOP (typed/readonly props, constructor promotion, interfaces/traits, **enums**), the modern type system (**property hooks & asymmetric visibility**, union/intersection), namespaces/PSR-4, errors, **File System/OS/`proc_open`/exec**, JSON/dates/PCRE, **PDO & injection-safe prepared statements**, web (superglobals/sessions/**XSS/CSRF/`password_hash`**), Composer/PSRs, attributes/generators/**Fibers**, **PHPUnit/Pest + PHPStan**, OPcache/JIT, security | 2351 |
+| [C](library/C_GUIDE.md) | **C23** (+ C17 baseline), GCC/Clang: the compile pipeline, types & the **integer/overflow** minefield, **pointers in depth**, arrays/strings, **memory management** (malloc/free + the classic bugs), structs/unions/enums/alignment, a rigorous **Undefined Behavior** section, the preprocessor (`#embed`), **File System/OS/`fork`/`exec`/`pipe`**, the stdlib, multi-file builds (**Make/CMake**), concurrency (pthreads/C11 threads/atomics), **production-safe C** (ASan/UBSan/valgrind, CERT-C, fuzzing), debugging/testing, performance | 2059 |
+| [C++](library/CPP_GUIDE.md) | **C++23** (C++26 flagged), modern C++ not C-with-classes: build/CMake, fundamentals & `auto`, **classes & RAII** (Rule of 0/3/5), **smart pointers & ownership**, **move semantics & value categories**, the **STL** (containers/iterators/**ranges**), **templates & concepts**, error handling (**`std::expected`**/exceptions/`optional`), polymorphism & `variant`, **`<filesystem>`/OS/processes**, concurrency (`jthread`/atomics/coroutines), **CMake/vcpkg/Conan**, **production C++** (sanitizers/Core Guidelines), GoogleTest/Catch2, performance | 2037 |
 
 ### Web Fundamentals
 | Guide | What it covers | Lines |
@@ -109,6 +119,7 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 | [Zustand](library/ZUSTAND_GUIDE.md) | Client state: stores, **selectors & why they matter for re-renders**, `useShallow`, set/get & immer updates, middleware (persist/immer/devtools/subscribeWithSelector), slices, state outside React, async actions, the **Next.js per-request SSR pattern**, testing | 1546 |
 | [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) | Why uncontrolled-first (the re-render story), `useForm` options, `register`/`handleSubmit`/`formState`, **zod validation**, `Controller` (when you need it), `watch`/`useWatch`, **`useFieldArray`**, `useFormContext`, async/server validation, the **shadcn Form pattern**, **Next.js Server Actions**, a11y | 1841 |
 | [Motion (animation)](library/MOTION_ANIMATION_GUIDE.md) | Why an animation lib, the **`motion` component**, transitions (**tween vs spring**), **variants & orchestration** (stagger), **gestures** (hover/tap/drag/inView), **`AnimatePresence`** exit animations, **layout & shared-element** transitions, **scroll animations**, motion values, **performance & reduced-motion**, Next.js | 2342 |
+| [GSAP (GreenSock) + React/Next.js](library/GSAP_GUIDE.md) | **GSAP 3.13+** (now **100% free incl. all plugins** post-Webflow): tweens (`to`/`from`/`fromTo`/`set`), **easing**, **timelines** & the position parameter, staggers, **the React integration done right** (`@gsap/react` + **`useGSAP()`** + cleanup), **ScrollTrigger** (scrub/pin/snap/`matchMedia`), **Next.js specifics** (`"use client"`/SSR/hydration), the free plugin suite (**SplitText/ScrollSmoother/MorphSVG/Draw SVG/MotionPath/Flip**), the **Flip** plugin with React state, responsive & reduced-motion a11y, **performance**, GSAP vs Motion | 1452 |
 | [Tailwind CSS (v4)](library/TAILWIND_CHEATSHEET.md) | Beginner-to-advanced guide: utility-first philosophy, v4 `@theme` setup, every core category, responsive/state variants (group/peer/has), dark mode, arbitrary values, `cn()`/CVA, plugins & framework integration | 1516 |
 | [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | The **own-your-code philosophy** (Radix + Tailwind + CVA), CLI (`init`/`add`), component anatomy (CVA/`cn()`/forwardRef), theming & dark mode, component-by-component reference with key props, the **Form pattern (RHF + zod)**, building your own variants, a11y, Next.js integration | 1578 |
 | [Material UI (MUI)](library/MATERIAL_UI_GUIDE.md) | When to choose MUI, **the theme in depth** (palette/typography/overrides/CSS vars), **`sx` vs `styled()`**, the layout system (Box/Stack/v6 Grid), component reference with key props, **forms with RHF**, the **DataGrid** (sorting/filtering/server-side), dark mode, **Next.js App Router setup**, performance | 1970 |
@@ -118,6 +129,17 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 |---|---|---|
 | [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md) | How RN works (Metro/Hermes/JSI/**New Architecture**), RN vs native vs Flutter, **core components** & native mapping, styling/flexbox, **Expo Router**, device/SDK APIs, **FlatList performance**, Reanimated & gestures, platform-specific code, **EAS Build/Submit/Update (OTA)**, testing, shipping | 2728 |
 | [Android (Android Studio, Kotlin)](library/ANDROID_STUDIO_GUIDE.md) | **Project/folder structure** & the **Layout Editor**, Gradle/version catalogs, activity lifecycle & intents, **Jetpack Compose** + state, MVVM/ViewModel/StateFlow/Hilt, RecyclerView vs LazyColumn, Room/DataStore, Retrofit, coroutines/Flow, permissions, navigation, debugging/profiling, signing/publishing | 2320 |
+
+### Backend — Python (FastAPI & Django)
+| Guide | What it covers | Lines |
+|---|---|---|
+| [FastAPI](library/FASTAPI_GUIDE.md) | **FastAPI 0.115+** on **Python 3.13/3.14**, **Pydantic v2**, **SQLAlchemy 2.0** (June 2026): the async ASGI model & request lifecycle, path operations & routing, **Pydantic v2 models/validation**, requests/responses & error handling, **Dependency Injection** (`Depends`/yield), **async & not-blocking the loop**, **databases** (SQLAlchemy/SQLModel async + Alembic, N+1), **auth** (OAuth2/JWT/hashing/scopes), settings (`pydantic-settings`), middleware/CORS, **background tasks & queues** (Celery/ARQ), WebSockets/streaming, **testing**, **scale-ready project structure**, **production deploy** (Gunicorn/Uvicorn behind Nginx, Docker, observability), performance/caching, security | 1584 |
+| [Django](library/DJANGO_GUIDE.md) | **Django 5.2 LTS** (+ 6.0) & **DRF**, Python 3.12–3.14 (June 2026): the batteries-included MTV model, URLs/views, **the ORM in depth** (QuerySets, relationships, **N+1 killers** `select_related`/`prefetch_related`, transactions), **migrations**, the **Admin**, forms, templates, **auth** (custom user model from day one, permissions/groups), 12-factor settings/secrets, middleware, **Django REST Framework** (serializers/viewsets/auth/permissions/throttling), **async Django**, **caching** (Redis), **Celery** background tasks, **testing**, scale-ready structure, **production deploy** (Gunicorn/ASGI behind Nginx, WhiteNoise, Docker, the deploy checklist), **security** (CSRF/XSS/SQLi, `check --deploy`), ORM performance | 2254 |
+
+### Backend — Java (Spring Boot)
+| Guide | What it covers | Lines |
+|---|---|---|
+| [Spring Boot](library/SPRING_BOOT_GUIDE.md) | **Spring Boot 3.4/3.5** (Spring Framework 6.2, **Java 21 LTS**; SB 4 flagged), June 2026: the **IoC container & DI** (constructor injection), Initializr/Maven & `@SpringBootApplication`, **config & profiles** (`@ConfigurationProperties`), **REST APIs** (`@RestController`, DTOs-vs-entities), validation & `@ControllerAdvice`, **Spring Data JPA** (entities/repositories/`@Query`, **N+1**/fetch, **Flyway/Liquibase**), **Spring Security** (the lambda DSL, **JWT/OAuth2**, method security), **`@Transactional`** & the service layer, AOP, **testing** (slices/MockMvc/**Testcontainers**), async/scheduling/**virtual threads**, caching (Redis), **Actuator/Micrometer observability**, production (jar/**Docker**/**GraalVM native**/behind Nginx), clean architecture at scale, performance (HikariCP, WebFlux note), security | 1718 |
 
 ### Backend — PHP (Laravel)
 | Guide | What it covers | Lines |
@@ -192,16 +214,22 @@ So you always know *exactly* what you're learning against. Each guide's own **Ve
 Pick the track that matches your goal. Within a track, follow the order listed.
 
 **① Foundations (a language + the web)**
-Learn a language top-to-bottom: [Python](library/PYTHON_GUIDE.md) · [JavaScript](library/JAVASCRIPT_GUIDE.md) + [Node.js](library/NODEJS_GUIDE.md) · [Java](library/JAVA_GUIDE.md) · [Kotlin](library/KOTLIN_GUIDE.md) · [Go](library/GO_GUIDE.md) · [Rust](library/RUST_GUIDE.md). For the web, do [HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) (incl. its DOM section).
+Learn a language top-to-bottom: [Python](library/PYTHON_GUIDE.md) · [JavaScript](library/JAVASCRIPT_GUIDE.md) + [Node.js](library/NODEJS_GUIDE.md) · [Java](library/JAVA_GUIDE.md) · [Kotlin](library/KOTLIN_GUIDE.md) · [Go](library/GO_GUIDE.md) · [Rust](library/RUST_GUIDE.md) · [PHP](library/PHP_GUIDE.md). For systems/low-level, do [C](library/C_GUIDE.md) → [C++](library/CPP_GUIDE.md) (then [Rust](library/RUST_GUIDE.md) for memory safety). For the web, do [HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) (incl. its DOM section).
 
 **② Frontend (React ecosystem)**
-[HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) → 1. [React 19](library/REACT_19_GUIDE.md) → 2. [Tailwind](library/TAILWIND_CHEATSHEET.md) → 3. [Next.js 16](library/NEXTJS_16_GUIDE.md) → 4. [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) → 5. [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) → 6. [Motion](library/MOTION_ANIMATION_GUIDE.md) → 7. [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) → 8. [Zustand](library/ZUSTAND_GUIDE.md) → 9. [Material UI](library/MATERIAL_UI_GUIDE.md)
+[HTML](library/HTML_GUIDE.md) → [CSS](library/CSS_GUIDE.md) → [JavaScript](library/JAVASCRIPT_GUIDE.md) → 1. [React 19](library/REACT_19_GUIDE.md) → 2. [Tailwind](library/TAILWIND_CHEATSHEET.md) → 3. [Next.js 16](library/NEXTJS_16_GUIDE.md) → 4. [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) → 5. [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) → 6. [Motion](library/MOTION_ANIMATION_GUIDE.md) → 7. [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) → 8. [Zustand](library/ZUSTAND_GUIDE.md) → 9. [Material UI](library/MATERIAL_UI_GUIDE.md). For motion, pick [Motion](library/MOTION_ANIMATION_GUIDE.md) (declarative, React-native) or [GSAP + React/Next.js](library/GSAP_GUIDE.md) (timeline/scroll-driven, `useGSAP()`).
 
 **③ Full-stack with Node**
 [JavaScript](library/JAVASCRIPT_GUIDE.md) → [Node.js](library/NODEJS_GUIDE.md) → [Next.js 16](library/NEXTJS_16_GUIDE.md) → [Fastify](library/FASTIFY_GUIDE.md) / [NestJS](library/NESTJS_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
 
 **④ Backend with Go**
 [Go — Language & Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) → [Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) → [Gin + uploads](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) → [JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [ent ORM](library/GO_ENT_ORM_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → [Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) → [gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) → [File System / OS / CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) → [Docker](library/DOCKER_GUIDE.md)
+
+**④a Backend with Python (FastAPI or Django)**
+[Python](library/PYTHON_GUIDE.md) → choose: [FastAPI](library/FASTAPI_GUIDE.md) (async APIs, microservices) **or** [Django](library/DJANGO_GUIDE.md) + DRF (batteries-included apps + admin) → [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) (cache/queues) → ship behind [Nginx](library/NGINX_GUIDE.md) in [Docker](library/DOCKER_GUIDE.md).
+
+**④b Backend with Java (Spring Boot)**
+[Java](library/JAVA_GUIDE.md) (or [Kotlin](library/KOTLIN_GUIDE.md)) → [Spring Boot](library/SPRING_BOOT_GUIDE.md) (REST → Spring Data JPA → Spring Security/JWT → testing with Testcontainers → Actuator) → [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Redis](library/REDIS_GUIDE.md) → ship behind [Nginx](library/NGINX_GUIDE.md) in [Docker](library/DOCKER_GUIDE.md).
 
 **⑤ Data layer & database design**
 [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) → [PostgreSQL](library/POSTGRESQL_GUIDE.md) → [Prisma](library/PRISMA_ORM_GUIDE.md) (Node) / [ent ORM](library/GO_ENT_ORM_GUIDE.md) (Go) → [SQLite3](library/SQLITE3_GUIDE.md) (embedded/local) → [MongoDB](library/MONGODB_GUIDE.md) (document) → [Redis](library/REDIS_GUIDE.md) (cache/KV)
