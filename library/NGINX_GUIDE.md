@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I have heard of Nginx" to "I can run it as a hardened static web server, a reverse proxy in front of a Node/Go app, a load balancer across many backends, an API gateway with rate limiting and auth, and a TLS-terminating edge with HTTP/2 and HTTP/3 — and debug all of it" — entirely offline. Every concept is explained in **prose first** (what it is, *why* it exists, when and how to use it, the key directives and their parameters, best practices, and **security** notes), then demonstrated with **heavily-commented, runnable configuration**. Read top-to-bottom the first time; afterwards use the Table of Contents as a lookup. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Nginx 1.27+** — both the **stable** branch (even minor numbers, e.g. 1.26.x) and the **mainline** branch (odd minor numbers, e.g. 1.27.x), which is what you should usually run in production despite the name. Modern features used throughout:
+> **Version note:** This guide targets **Nginx 1.29+** — both the **stable** branch (even minor numbers, e.g. 1.28.x) and the **mainline** branch (odd minor numbers, e.g. 1.29.x), which is what you should usually run in production despite the name. Modern features used throughout:
 > - **HTTP/3 over QUIC** is in mainline since **1.25.0** (compiled in with `--with-http_v3_module`) — TLS 1.3-only, runs over UDP/443.
 > - **HTTP/2** is configured with the modern `http2 on;` directive (per-server) rather than the old `listen ... http2` parameter (deprecated in 1.25.1).
 > - The `ssl_protocols`, `ssl_conf_command`, and OCSP-stapling story is mature; **TLS 1.3** is the default-recommended floor in 2026.

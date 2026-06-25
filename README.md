@@ -1,8 +1,81 @@
 # 📚 Developer Study Library & Workspace
 
-A self-contained, **offline-first** collection of in-depth technical guides plus a real demo project. Everything here is written to be learned and built from **without an internet connection** — each guide has concepts, runnable commented examples, reference tables, gotchas, and a study path, accurate **as of 2026**.
+A self-contained, **offline-first** collection of in-depth technical guides plus a real demo project. Everything here is written to be learned and built from **without an internet connection** — each guide has concepts, runnable commented examples, reference tables, gotchas, and a study path, accurate **as of June 2026** (see the **Versions at a Glance** table below for exactly what each targets).
 
 > **How to use this:** All guides live in [`library/`](library/). Pick a track below, open the guide, and work top-to-bottom. Each guide ends with a "Study Path" and build-to-learn projects.
+
+---
+
+## 📌 Versions at a Glance — what each guide targets (as of **June 2026**)
+
+So you always know *exactly* what you're learning against. Each guide's own **Version note** has the full detail and flags fast-moving APIs with **⚡**; this is the quick lookup. Verified current **June 2026**.
+
+| Guide | Targets (June 2026) |
+|---|---|
+| **Languages** | |
+| [Python](library/PYTHON_GUIDE.md) | Python **3.13 / 3.14** |
+| [JavaScript](library/JAVASCRIPT_GUIDE.md) | **ECMAScript 2024 / 2025** (Node 22+, Deno, Bun) |
+| [Node.js](library/NODEJS_GUIDE.md) | Node.js **22 / 24 LTS** |
+| [Java](library/JAVA_GUIDE.md) | JDK **21 & 25 LTS** |
+| [Kotlin](library/KOTLIN_GUIDE.md) | Kotlin **2.x** (K2) |
+| [Go](library/GO_GUIDE.md) · [Patterns](library/GO_LANG_AND_PATTERNS_GUIDE.md) | **Go 1.25 / 1.26** |
+| [Rust](library/RUST_GUIDE.md) | Rust **2024 edition**, stable toolchain |
+| [PHP](library/PHP_GUIDE.md) | **PHP 8.4** (8.5 from Nov 2025 flagged) |
+| **Web fundamentals** | |
+| [HTML](library/HTML_GUIDE.md) | **HTML Living Standard** (WHATWG, 2026) |
+| [CSS](library/CSS_GUIDE.md) | **Modern/baseline CSS 2026** (`:has()`, container queries, nesting, `oklch`) |
+| **Frontend — React** | |
+| [React 19](library/REACT_19_GUIDE.md) | **React 19** (stable) |
+| [Next.js 16](library/NEXTJS_16_GUIDE.md) | **Next.js 16** (App Router) + React 19 |
+| [TanStack Query](library/TANSTACK_QUERY_GUIDE.md) | **v5** (`@tanstack/react-query`) + React 19 |
+| [Zustand](library/ZUSTAND_GUIDE.md) | **v5** + React 19 / Next 15 |
+| [React Hook Form](library/REACT_HOOK_FORM_GUIDE.md) | **v7** + Zod **v3/v4** + React 19 |
+| [Motion](library/MOTION_ANIMATION_GUIDE.md) | **Motion** (ex-Framer Motion) + React 19 / Next 15-16 |
+| [Tailwind CSS](library/TAILWIND_CHEATSHEET.md) | **v4** (Oxide engine, CSS-first `@theme`) |
+| [shadcn/ui](library/SHADCN_UI_CHEATSHEET.md) | current `shadcn` CLI + React 19 + Tailwind v4 |
+| [Material UI](library/MATERIAL_UI_GUIDE.md) | MUI **v6 & v7** + React 19 |
+| **Mobile** | |
+| [React Native + Expo](library/REACT_NATIVE_EXPO_GUIDE.md) | **Expo SDK 54**, **React Native 0.81+** (New Architecture), React 19 |
+| [Android (Android Studio)](library/ANDROID_STUDIO_GUIDE.md) | 2026 Android toolchain + **Jetpack Compose** |
+| **Backend — PHP** | |
+| [Laravel](library/LARAVEL_GUIDE.md) | **Laravel 12** (PHP 8.2+; **L13** ~Q1 2026 flagged) |
+| **Backend — Node.js** | |
+| [NestJS](library/NESTJS_GUIDE.md) | **NestJS 11** + Node 22/24 + TS 5.x |
+| [Fastify](library/FASTIFY_GUIDE.md) | **Fastify v5** + Node 22/24 |
+| [Prisma ORM](library/PRISMA_ORM_GUIDE.md) | **Prisma 6** + Node 20/22 + TS 5.x |
+| **Databases & caching** | |
+| [PostgreSQL](library/POSTGRESQL_GUIDE.md) | **PostgreSQL 17 & 18** (PG 18 current, GA Sept 2025) |
+| [Redis](library/REDIS_GUIDE.md) | **Redis 7.x & 8.x** |
+| [Relational DB Design](library/RELATIONAL_DB_DESIGN_GUIDE.md) | **PostgreSQL 18** dialect (principles are RDBMS-agnostic) |
+| [MongoDB](library/MONGODB_GUIDE.md) | **MongoDB 8.x** |
+| [SQLite3](library/SQLITE3_GUIDE.md) | **SQLite 3.45–3.50** |
+| **Backend — Go** (all **Go 1.25 / 1.26**) | |
+| [Go net/http](library/GO_NET_HTTP_REST_API_GUIDE.md) | stdlib `net/http` (1.22+ routing) |
+| [Go Gin](library/GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) | **Gin v1.10+** |
+| [Go Gorilla WebSockets](library/GO_GORILLA_WEBSOCKETS_GUIDE.md) | **gorilla/websocket v1.5.x** |
+| [Go ent ORM](library/GO_ENT_ORM_GUIDE.md) | **ent v0.14+** |
+| [Go JWT + Argon2](library/GO_JWT_ARGON2_GUIDE.md) | **golang-jwt/jwt v5** + `x/crypto/argon2` |
+| [Go FS/OS/CLIs](library/GO_FILESYSTEM_OS_CLI_GUIDE.md) | stdlib + Cobra/Viper |
+| [Go gRPC & RPC](library/GO_GRPC_RPC_GUIDE.md) | **proto3**, `grpc` v1.6x+, `protobuf` v1.3x+ |
+| **Auth & platforms** | |
+| [Better Auth](library/BETTERAUTH_GUIDE.md) | **Better Auth v1.x** + Next.js / Go |
+| [Supabase](library/SUPABASE_GUIDE.md) | Supabase 2026 (`@supabase/ssr`) + Next.js / Go |
+| **Infrastructure & protocols** | |
+| [Networking](library/NETWORKING_GUIDE.md) | 2026 protocols: **HTTP/3 + QUIC**, **TLS 1.3**, IPv6 (fundamentals are timeless) |
+| [Docker](library/DOCKER_GUIDE.md) | **Docker Engine 28.x** + **Compose v2** |
+| [Nginx](library/NGINX_GUIDE.md) | **Nginx 1.29+** (1.28 stable / 1.29 mainline), HTTP/2 & /3 |
+| [FTP Server (Go & Node)](library/FTP_SERVER_GO_AND_NODE_GUIDE.md) | Go 1.25/1.26 + ftpserverlib 0.21–0.22; Node 20/22 + ftp-srv v5 |
+| **Server & systems admin** | |
+| [Linux Server Admin](library/LINUX_SERVER_ADMIN_GUIDE.md) | **Ubuntu 24.04 / Debian 12 / RHEL 9–10** (systemd, nftables) |
+| [Windows Server Admin](library/WINDOWS_SERVER_ADMIN_GUIDE.md) | **Windows Server 2025** (2022/2019 noted) |
+| [Database Server Admin](library/DATABASE_SERVER_ADMIN_GUIDE.md) | PG 17/18, MySQL 8.4 LTS, MariaDB 11.x, MongoDB 8, Redis 7/8, SQL Server 2022/2025 |
+| **Version control & DevOps** | |
+| [Git](library/GIT_GUIDE.md) | **Git 2.45+** |
+| [CI/CD with GitHub Actions](library/GITHUB_ACTIONS_CICD_GUIDE.md) | GitHub Actions 2026 (current `actions/*`, OIDC) |
+| **Shells & scripting** | |
+| [Bash](library/BASH_SCRIPTING_GUIDE.md) | **Bash 5.2+** |
+| [Windows CMD & Batch](library/WINDOWS_CMD_BATCH_GUIDE.md) | **Windows 11 `cmd.exe`** (legacy/frozen) |
+| [PowerShell](library/POWERSHELL_GUIDE.md) | **Windows PowerShell 5.1 & PowerShell 7.x** |
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I know some React on the web" (or even "I'm new to React") to "I can design, build, debug, and ship a production iOS + Android app with Expo" — without an internet connection. Every concept comes with prose that explains *what it is*, *the logic / why it works this way*, *what it's for and when you reach for it*, *how to use it*, the *key props/parameters*, *best practices*, and *gotchas* — followed by runnable, heavily-commented code. Read top-to-bottom the first time; afterward use the Table of Contents as a reference. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Expo SDK 52 / 53** (current in 2026), **React Native 0.77+** with the **New Architecture** (Fabric + TurboModules + JSI) enabled by default, and **React 19**. Things worth knowing about the modern stack:
+> **Version note:** This guide targets **Expo SDK 54** (current as of June 2026; SDK 52/53 are recent and near-identical for this guide), **React Native 0.81+** with the **New Architecture** (Fabric + TurboModules + JSI) enabled by default, and **React 19**. Things worth knowing about the modern stack:
 > - **New Architecture is the default** in SDK 52+. The legacy bridge is gone for new projects; UI and native calls go through JSI (direct C++ binding). Covered in §1 and §18.
 > - **React 19** ships with React Native 0.77+ — Actions, `use()`, the `ref`-as-prop change, and improved Suspense all work on native. Cross-referenced against `REACT_19_GUIDE.md` throughout.
 > - **Expo Router v4** (file-based routing built on React Navigation) is the default navigator; there is no root `App.tsx` anymore — the `app/` directory is the entry point.
@@ -1078,7 +1078,7 @@ import Button from './Button'; // you import the base name; Metro picks the vari
 
 ### 7.5 NativeWind — Tailwind CSS for React Native **[I]**
 
-> **⚡ Version note:** **NativeWind v4** is stable in 2026 and works with Expo SDK 52/53. It lets you use Tailwind utility classes via a `className` prop; at build time it compiles them to RN `StyleSheet` objects (no runtime CSS). If you know Tailwind on the web (`TAILWIND_CHEATSHEET.md`), the classes are the same.
+> **⚡ Version note:** **NativeWind v4** is stable in 2026 and works with Expo SDK 52/53/54. It lets you use Tailwind utility classes via a `className` prop; at build time it compiles them to RN `StyleSheet` objects (no runtime CSS). If you know Tailwind on the web (`TAILWIND_CHEATSHEET.md`), the classes are the same.
 
 ```bash
 npx expo install nativewind tailwindcss
@@ -2725,4 +2725,4 @@ eas update --channel production --message "Bug fix"
 
 ---
 
-*This guide targets Expo SDK 52/53, React Native 0.77+ (New Architecture enabled by default), and React 19, current in 2026. Compare against `ANDROID_STUDIO_GUIDE.md` (native Kotlin/Compose) and `REACT_19_GUIDE.md` (the React layer underneath). For the latest API changes always consult docs.expo.dev.*
+*This guide targets Expo SDK 54 (52/53 nearly identical), React Native 0.81+ (New Architecture enabled by default), and React 19, current in 2026. Compare against `ANDROID_STUDIO_GUIDE.md` (native Kotlin/Compose) and `REACT_19_GUIDE.md` (the React layer underneath). For the latest API changes always consult docs.expo.dev.*

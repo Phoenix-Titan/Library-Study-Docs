@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I have used HTTP but never opened a WebSocket" to "I can design, secure, and horizontally scale a production real-time Go server." This is a **learn-offline study guide**: every concept is explained in *prose first* — what it is, the logic and *why* it exists, what it is for and when to reach for it, how to use it, the key options and parameters, best practices, and explicit **security recommendations** — and only *then* shown as heavily-commented, runnable Go code. Read it top-to-bottom the first time; afterwards use the Table of Contents as a lookup. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Go 1.23 / 1.24** (current in 2026) and **`github.com/gorilla/websocket` v1.5.x**. The Gorilla toolkit went dormant around 2022, was archived, and is now **actively maintained again** under community stewardship (the `gorilla/*` repos were un-archived in 2023 and continue to receive releases through 2026). The v1 API is stable; there is **no v2 migration** to worry about. Modern Go features used here: the **Go 1.22 loop-variable-per-iteration** fix (so `for client := range hub.clients` is safe to close over), `log/slog` structured logging, `errors.As`/`errors.Is`, and `http.Server.Shutdown` with `context`. Where behaviour is version-sensitive it is flagged with **⚡ Version note**.
+> **Version note:** This guide targets **Go 1.25 / 1.26** (current in 2026) and **`github.com/gorilla/websocket` v1.5.x**. The Gorilla toolkit went dormant around 2022, was archived, and is now **actively maintained again** under community stewardship (the `gorilla/*` repos were un-archived in 2023 and continue to receive releases through 2026). The v1 API is stable; there is **no v2 migration** to worry about. Modern Go features used here: the **Go 1.22 loop-variable-per-iteration** fix (so `for client := range hub.clients` is safe to close over), `log/slog` structured logging, `errors.As`/`errors.Is`, and `http.Server.Shutdown` with `context`. Where behaviour is version-sensitive it is flagged with **⚡ Version note**.
 >
 > **This guide's place in the library:** it assumes you already know the Go *language* (`GO_GUIDE.md`) and HTTP basics. WebSockets begin life as an HTTP request, so the **`GO_NET_HTTP_REST_API_GUIDE.md`** (servers, handlers, middleware, graceful shutdown) and **`GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md`** (running WebSockets inside the Gin router) are direct companions and are cross-referenced throughout. For the multi-instance scaling backplane see **`REDIS_GUIDE.md`**; for connection authentication see **`GO_JWT_ARGON2_GUIDE.md`**.
 
@@ -132,7 +132,7 @@ Because the handshake *is* an HTTP request, you get exactly one HTTP request to 
 
 ### 3.1 Prerequisites & install **[B]**
 
-You need Go 1.21+ (1.23/1.24 recommended) and a Go module. Inside your module directory:
+You need Go 1.21+ (1.25/1.26 recommended) and a Go module. Inside your module directory:
 
 ```bash
 go get github.com/gorilla/websocket@latest
@@ -1907,4 +1907,4 @@ Work through these in order — each builds on the last. **Implement, don't just
 
 ---
 
-*Guide accurate as of Go 1.23/1.24 and gorilla/websocket v1.5.x (2026). The Gorilla toolkit is actively maintained again. Always confirm exact API signatures at pkg.go.dev.*
+*Guide accurate as of Go 1.25/1.26 and gorilla/websocket v1.5.x (2026). The Gorilla toolkit is actively maintained again. Always confirm exact API signatures at pkg.go.dev.*

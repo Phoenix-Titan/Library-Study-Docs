@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I have never written a line of Go" to "I understand the Go *language* deeply enough to read the standard library and reason about memory, concurrency, and the type system" — entirely offline. This is the **pure-language** reference: every concept is explained in prose first (what it is, *why* Go was designed this way, when and how to use it, best practices, and security notes where relevant), then demonstrated with heavily-commented, runnable code. Read top-to-bottom the first time; afterwards use the Table of Contents as a lookup. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Go 1.23 / 1.24** (current in 2026). Modern-Go features you should know and that this guide uses throughout:
+> **Version note:** This guide targets **Go 1.25 / 1.26** (current in 2026). Modern-Go features you should know and that this guide uses throughout:
 > - **Generics** (type parameters) — in the language since 1.18, mature and idiomatic where they fit (§11).
 > - **Range-over-function iterators** (`for v := range myIterator`) landed in **1.23** — you can write custom iterators that plug into `range`; the `iter` package and the `slices`/`maps` iterator helpers build on this (§6, §13).
 > - **The loop-variable-per-iteration change (Go 1.22)** fixed the infamous "loop variable captured by a goroutine/closure" bug — each iteration now gets a *fresh* variable. Code built with `go 1.22+` behaves differently from older code (§5, §19).

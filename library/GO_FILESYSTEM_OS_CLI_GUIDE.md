@@ -2,7 +2,7 @@
 
 > **Who this is for:** Go developers (beginner to intermediate) who want to read and write files, manipulate the filesystem, shell out to external programs, inspect the host system, handle OS signals, and build real command-line tools — using mostly the **Go standard library**, with the modern CLI ecosystem (Cobra, urfave/cli, Viper, charm) covered where it earns its place. Every concept comes with runnable, commented code you can drop into a `main.go` and run with `go run .`.
 >
-> **Version note:** This guide targets **Go 1.23 / 1.24** (current in 2026). Two recent additions matter a lot here:
+> **Version note:** This guide targets **Go 1.25 / 1.26** (current in 2026). Two recent additions matter a lot here:
 > - **`os.Root`** (Go 1.24) — a sandboxed filesystem handle that prevents path-traversal escapes (`..`, absolute paths, symlinks pointing outside the root). Covered in §4.
 > - **Range-over-func iterators** (Go 1.23) — `for x := range fn` over functions, which the standard library now exposes in places like `strings.Lines`, `bytes.Lines`, etc. Mentioned where relevant.
 >

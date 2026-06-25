@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I have never run a container" to "I can write a tiny, secure, multi-stage Dockerfile, orchestrate a full web + db + cache stack with Compose, debug it, and ship it to a registry and a server" — entirely offline. Every concept is explained in prose **first** (what it is, *why* it exists, when and how to use it, the important flags/instructions, best practices, and security notes), then demonstrated with heavily-commented, runnable commands and files. Read top-to-bottom the first time; afterwards use the Table of Contents as a lookup. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Docker Engine 27.x / Docker Desktop 4.3x** and the **Compose v2** plugin (current in 2026). Modern features you should know and that this guide uses throughout:
+> **Version note:** This guide targets **Docker Engine 28.x / Docker Desktop 4.4x** and the **Compose v2** plugin (current as of June 2026; Engine 27.x from 2024 behaves identically for everything here). Modern features you should know and that this guide uses throughout:
 > - **BuildKit is the default builder** — it enables parallel stages, `RUN --mount=type=cache`, `RUN --mount=type=secret`, and faster, smarter caching. `docker build` uses it automatically; `docker buildx` is the modern multi-platform front-end.
 > - **`docker compose`** (a space, the built-in Go plugin — Compose **v2**) has fully replaced the legacy Python **`docker-compose`** (a hyphen). Use the space version everywhere.
 > - **The Compose Specification** merged the old "version 2/3" file formats — the top-level `version:` key is now obsolete and you should omit it.

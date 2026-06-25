@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I can write a hello-world Gin route" to "I design, build, secure, test, and ship a RESTful backend that survives real traffic and a growing team" — without an internet connection. Every concept is explained in *prose first* — what it is, the logic/why, what it's used for and when, how to use it, its parameters/props, best practices, and security recommendations — and *then* shown in heavily-commented, runnable code. Read top-to-bottom the first time; afterward use the Table of Contents as a reference. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **`github.com/gin-gonic/gin` v1.10+** (current in 2026) on **Go 1.23 / 1.24**. Gin's core API (routing, binding, middleware, context) has been stable since v1.7, so almost everything here applies from v1.7 onward. Go-language features used (generics 1.18, `log/slog` 1.21, `min`/`max`/`clear` 1.21, range-over-int 1.22, per-iteration loop variables 1.22, range-over-func iterators 1.23) are flagged where relevant. Where behaviour is version-sensitive it is flagged with **⚡ Version note**. The author is on **Windows 11**, so cross-platform notes (path separators, `.exe`, shells) are called out. Confirm exact APIs at `pkg.go.dev/github.com/gin-gonic/gin` when online.
+> **Version note:** This guide targets **`github.com/gin-gonic/gin` v1.10+** (current in 2026) on **Go 1.25 / 1.26**. Gin's core API (routing, binding, middleware, context) has been stable since v1.7, so almost everything here applies from v1.7 onward. Go-language features used (generics 1.18, `log/slog` 1.21, `min`/`max`/`clear` 1.21, range-over-int 1.22, per-iteration loop variables 1.22, range-over-func iterators 1.23) are flagged where relevant. Where behaviour is version-sensitive it is flagged with **⚡ Version note**. The author is on **Windows 11**, so cross-platform notes (path separators, `.exe`, shells) are called out. Confirm exact APIs at `pkg.go.dev/github.com/gin-gonic/gin` when online.
 >
 > **This guide's place in the library:** It is the single deep reference for building a *production* Gin backend. It folds in the previous file-upload material and cross-references the companion guides where they go deeper:
 > - `GO_LANG_AND_PATTERNS_GUIDE.md` — the Go language itself and the design patterns (clean architecture, repository, DI, factory, adapter, functional options) we *apply* here.
@@ -190,7 +190,7 @@ Go is compiled, so by default every code change means stopping the process, re-r
 
 > **⚡ Note on the module path:** Air moved to the `air-verse` org. The current install path is `github.com/air-verse/air`. The old `github.com/cosmtrek/air` path still appears in older tutorials but is deprecated — prefer the new one.
 
-**Install** (Go 1.23/1.24):
+**Install** (Go 1.25/1.26):
 
 ```bash
 # Recommended: install the binary into $GOPATH/bin (make sure that's on your PATH).
@@ -3333,4 +3333,4 @@ Take the Users + Orders API and add: refresh-token rotation with revocation, ord
 
 ---
 
-*Guide accurate as of June 2026 — Gin v1.10+, Go 1.23/1.24. Confirm version-sensitive details against `pkg.go.dev` when online.*
+*Guide accurate as of June 2026 — Gin v1.10+, Go 1.25/1.26. Confirm version-sensitive details against `pkg.go.dev` when online.*

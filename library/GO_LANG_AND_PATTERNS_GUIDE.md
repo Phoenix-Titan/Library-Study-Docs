@@ -2,7 +2,7 @@
 
 > **Who this is for:** Anyone going from "I've never written Go" to "I design maintainable, testable, scalable Go backends" — without an internet connection. Every concept is explained in prose first (what it is, *why* Go does it that way, when to use it) and then demonstrated with heavily-commented, runnable code. Read top-to-bottom the first time; afterwards use the Table of Contents as a reference. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
-> **Version note:** This guide targets **Go 1.23 / 1.24** (current in 2026). Things worth knowing about modern Go:
+> **Version note:** This guide targets **Go 1.25 / 1.26** (current in 2026). Things worth knowing about modern Go:
 > - **Generics** (type parameters) have been in the language since 1.18 and are now mature and idiomatic where they fit (§8).
 > - **Range-over-function iterators** (`for x := range myIterator`) landed in 1.23 — you can now write custom iterators that plug into `range`. The `iter` package and `slices`/`maps` iterator helpers are part of this (§9, §17).
 > - **`log/slog`** (structured logging, stdlib since 1.21) is the standard way to log in production (§17).
