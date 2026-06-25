@@ -332,7 +332,9 @@ jobs:
   handle:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Payload: ${{ toJSON(github.event.client_payload) }}"
+      # Quote the whole command: the "Payload:" colon-space would otherwise be
+      # parsed by YAML as a mapping. (Or use a `run: |` block scalar.)
+      - run: 'echo "Payload: ${{ toJSON(github.event.client_payload) }}"'
         # The POSTed JSON arrives in github.event.client_payload.
 ```
 
@@ -1013,7 +1015,7 @@ As warned in §6.2: PR titles, branch names, issue bodies, and commit messages f
 # ✅ SAFE — the value is an env var; the shell sees it as a string, not code:
 - env:
     PR_TITLE: ${{ github.event.pull_request.title }}
-  run: echo "Title: $PR_TITLE"
+  run: 'echo "Title: $PR_TITLE"'   # quote so the YAML parser ignores the colon-space
 ```
 
 ### 9.6 Pinning third-party actions to a full SHA (supply chain) **[A]**
@@ -1180,7 +1182,8 @@ on:
     secrets:
       CODECOV_TOKEN: { required: false }
     outputs:
-      result: { value: ${{ jobs.test.outputs.result }}, description: 'pass/fail summary' }
+      # An expression inside a flow mapping must be quoted, else YAML reads the `{{` as a nested map.
+      result: { value: "${{ jobs.test.outputs.result }}", description: 'pass/fail summary' }
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -1801,7 +1804,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production               # still gated by approval + prod scope
     steps:
-      - env: { TAG: ${{ inputs.image_tag }} }   # launder input via env (§9.5)
+      - env: { TAG: "${{ inputs.image_tag }}" }   # launder input via env (§9.5); quote inside { }
         run: |
           echo "Rolling back to ghcr.io/${{ github.repository }}:$TAG"
           # …kubectl set image / docker compose pull+up / cloud deploy pointing at $TAG…
