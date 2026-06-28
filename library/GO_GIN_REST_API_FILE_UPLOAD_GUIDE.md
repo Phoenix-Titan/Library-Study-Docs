@@ -2543,7 +2543,159 @@ ws.onmessage = (e) => {
 
 ### 13.4 Scaling realtime across instances **[A]**
 
-The in-memory hub works on **one** server. Behind a load balancer with multiple instances (§16), a user's WebSocket may be on instance A while the order update happens on instance B — B's hub has no connection to push to. The fix is a **backplane**: instances publish events to **Redis Pub/Sub** (or NATS/Kafka), and every instance's hub subscribes and pushes to whichever of *its* local connections match. Your `Notifier` then publishes to Redis instead of (or in addition to) the local hub — the service code doesn't change. Also configure the proxy for WebSockets (Nginx needs the `Upgrade`/`Connection` headers and a long `proxy_read_timeout` — see `NGINX_GUIDE.md`) and use **sticky sessions** or a shared backplane so reconnects work. Full Redis-backplane pattern: `GO_GORILLA_WEBSOCKETS_GUIDE.md`; Redis details: `REDIS_GUIDE.md`.
+The in-memory hub works on **one** server. Behind a load balancer with multiple instances (§16), a user's WebSocket may be on instance A while the order update happens on instance B — B's hub has no local connection for that user, so the push is silently lost. The fix is a **backplane**: every instance **publishes** events to a shared bus (**Redis Pub/Sub** here) and **subscribes** to it, so an event raised on *any* instance reaches *every* instance, and each delivers to whichever of *its own* local connections match. Here is the full implementation.
+
+**The design.** Introduce a `RedisBackplane` that implements the same `Notifier` interface the service already depends on (§13.3) — so **the service code does not change at all**. `NotifyUser` no longer delivers locally; it **publishes** an envelope to Redis. A background **subscriber** on each instance receives every published envelope (including its own) and calls the local hub's `deliverLocal`. Routing *all* delivery through the subscription (even for the originating instance) keeps it simple and avoids double-sends.
+
+```
+                       order updated on  ┌─────────────┐
+   service ─NotifyUser─▶ RedisBackplane ─┤  PUBLISH    │
+                                         │ "ws:events" │──────┐
+                                         └─────────────┘      │  Redis Pub/Sub
+        ┌──────────────── every instance SUBSCRIBES ──────────┤  (fan-out to all)
+        ▼                          ▼                           ▼
+   instance A                 instance B                  instance C
+   subscriber→deliverLocal    subscriber→deliverLocal     subscriber→deliverLocal
+   (has user's conn → sends)  (no conn → no-op)           (no conn → no-op)
+```
+
+**1) Split the hub's "publish" from its "local delivery."** Rename the §13.3 `Hub.NotifyUser` to `deliverLocal` — same body, but now it is explicitly *local only* (delivery to this instance's connections). The hub no longer implements `Notifier` directly in multi-instance mode; the backplane does.
+
+```go
+// internal/realtime/hub.go — local fan-out only (the body from §13.3, renamed).
+func (h *Hub) deliverLocal(userID string, msg []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.clients[userID] {
+		select {
+		case c.send <- msg: // hand to this client's writePump
+		default:            // slow consumer → drop & close (don't block the subscriber loop)
+			close(c.send)
+			delete(h.clients[userID], c)
+		}
+	}
+}
+```
+
+**2) The backplane: publish on `NotifyUser`, fan-in via a subscription.** Uses `github.com/redis/go-redis/v9` (see `REDIS_GUIDE.md`).
+
+```go
+// internal/realtime/backplane.go
+package realtime
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+const eventsChannel = "ws:events"
+
+// The wire envelope: who the event is for, plus the already-serialized payload.
+type envelope struct {
+	UserID  string          `json:"u"`
+	Payload json.RawMessage `json:"p"`
+}
+
+type RedisBackplane struct {
+	rdb *redis.Client
+	hub *Hub
+	log *slog.Logger
+}
+
+func NewRedisBackplane(rdb *redis.Client, hub *Hub, log *slog.Logger) *RedisBackplane {
+	return &RedisBackplane{rdb: rdb, hub: hub, log: log}
+}
+
+// NotifyUser satisfies the service's Notifier interface — but PUBLISHES instead of
+// delivering locally. Delivery happens uniformly in Run() on every instance.
+func (b *RedisBackplane) NotifyUser(userID string, event any) {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		b.log.Error("ws marshal event", "err", err)
+		return
+	}
+	env, _ := json.Marshal(envelope{UserID: userID, Payload: payload})
+	// Fire-and-forget with a short timeout so a slow Redis can't stall the request path.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := b.rdb.Publish(ctx, eventsChannel, env).Err(); err != nil {
+		b.log.Error("ws publish", "err", err) // event is lost; log/metric it (realtime is best-effort)
+	}
+}
+
+// Run subscribes and delivers to local connections until ctx is cancelled.
+// Call it once per instance in a goroutine; it reconnects on transient errors.
+func (b *RedisBackplane) Run(ctx context.Context) {
+	for {
+		sub := b.rdb.Subscribe(ctx, eventsChannel)
+		ch := sub.Channel() // go-redis auto-reconnects this channel under the hood
+		b.log.Info("ws backplane subscribed", "channel", eventsChannel)
+		for {
+			select {
+			case <-ctx.Done():
+				_ = sub.Close()
+				return
+			case msg, ok := <-ch:
+				if !ok { // channel closed (e.g. connection dropped) → re-subscribe
+					_ = sub.Close()
+					break
+				}
+				var env envelope
+				if err := json.Unmarshal([]byte(msg.Payload), &env); err != nil {
+					b.log.Error("ws bad envelope", "err", err)
+					continue
+				}
+				b.hub.deliverLocal(env.UserID, env.Payload) // no-op if this instance has no such conn
+			}
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}
+}
+```
+
+**3) Wire it up in `main` (DI).** The hub and backplane are created once; the backplane is injected into services as the `Notifier`; its `Run` loop starts in a goroutine and stops on shutdown.
+
+```go
+hub := realtime.NewHub()
+rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+backplane := realtime.NewRedisBackplane(rdb, hub, logger)
+
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+go backplane.Run(ctx) // each instance runs its own subscriber
+
+// Inject the BACKPLANE (not the bare hub) wherever a Notifier is needed:
+orderSvc := order.NewService(orderRepo, backplane) // service is unchanged (§13.3)
+// ...build router, mount /ws with WSAuth, then srv.ListenAndServe()...
+// On shutdown: stop() cancels ctx → Run returns; then close hub connections + rdb.Close().
+```
+
+That's the whole solution: an order update on **any** instance now reaches the user's socket on **whatever** instance holds it. The originating instance delivers via its *own* subscription too, so there is exactly one code path and no duplicates.
+
+**Scaling the backplane further.** A single `ws:events` channel means every instance receives every event and filters locally — perfectly fine into the thousands of events/sec, but at very high volume the cross-instance chatter grows. Two common refinements: (a) **shard** across N channels by hashing the userID (`ws:events:{hash(userID)%N}`) and have each instance subscribe to all N; or (b) **per-user channels** — `SUBSCRIBE ws:user:{id}` only while that user has a local connection (and `UNSUBSCRIBE` on their last disconnect), then `PUBLISH ws:user:{id}` — so an instance only receives events for users it actually serves. Start with the single channel; reach for these only when metrics say so. For cross-service or durable delivery, swap Redis Pub/Sub for **Redis Streams**, NATS, or Kafka behind the same `Notifier`.
+
+**4) Configure the proxy for WebSockets.** A reverse proxy must be told to *upgrade* the connection and not to time out a long-lived idle socket (see `NGINX_GUIDE.md`):
+
+```nginx
+location /ws {
+    proxy_pass http://app_upstream;
+    proxy_http_version 1.1;                       # required for Upgrade
+    proxy_set_header Upgrade $http_upgrade;       # pass the WebSocket upgrade
+    proxy_set_header Connection "upgrade";        # ...and the Connection header
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 3600s;                     # don't kill an idle but live socket (1h)
+    proxy_send_timeout 3600s;
+}
+```
+
+> **Sticky sessions vs the backplane — they solve different things.** The **backplane** solves *delivery* (an event reaching a user's socket no matter which instance raised it). **Sticky sessions** (the LB pinning a client to one instance, e.g. by IP hash or a cookie) help *connection stability* — a dropped WebSocket reconnects to an instance that's healthy, and avoids needless re-handshakes. With a backplane you don't strictly *need* stickiness for correctness (any instance can serve any user), but it reduces churn. Always set the LB's idle timeout above your ping interval so keepalives keep the socket open. Full Redis-backplane variations and the complete hub: `GO_GORILLA_WEBSOCKETS_GUIDE.md`; Redis client/Pub-Sub/Streams details: `REDIS_GUIDE.md`.
 
 > **Production checklist:** strict `CheckOrigin`; authenticate before upgrade; one writer goroutine per connection; `SetReadLimit` + read/write deadlines + ping/pong keepalive; bounded per-client send buffer with a drop/close policy for slow clients; graceful shutdown that closes all sockets; a Redis (or similar) backplane once you run more than one instance.
 
