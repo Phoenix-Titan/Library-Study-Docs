@@ -3,7 +3,7 @@
 > **Who this is for:** Anyone going from "I know some React on the web" (or even "I'm new to React") to "I can design, build, debug, and ship a production iOS + Android app with Expo" — without an internet connection. Every concept comes with prose that explains *what it is*, *the logic / why it works this way*, *what it's for and when you reach for it*, *how to use it*, the *key props/parameters*, *best practices*, and *gotchas* — followed by runnable, heavily-commented code. Read top-to-bottom the first time; afterward use the Table of Contents as a reference. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced.
 >
 > **Version note:** This guide targets **Expo SDK 54** (current as of June 2026; SDK 52/53 are recent and near-identical for this guide), **React Native 0.81+** with the **New Architecture** (Fabric + TurboModules + JSI) enabled by default, and **React 19**. Things worth knowing about the modern stack:
-> - **New Architecture is the default** in SDK 52+. The legacy bridge is gone for new projects; UI and native calls go through JSI (direct C++ binding). Covered in §1 and §18.
+> - **New Architecture is the default** in SDK 52+. The legacy bridge is gone for new projects; UI and native calls go through JSI (direct C++ binding). Covered in §1 and §23.
 > - **React 19** ships with React Native 0.77+ — Actions, `use()`, the `ref`-as-prop change, and improved Suspense all work on native. Cross-referenced against `REACT_19_GUIDE.md` throughout.
 > - **Expo Router v4** (file-based routing built on React Navigation) is the default navigator; there is no root `App.tsx` anymore — the `app/` directory is the entry point.
 > - **`expo-av` is splitting** into `expo-audio` and `expo-video`; **React Native DevTools** replaced Flipper; **FlashList** is the high-performance list of choice.
@@ -30,8 +30,13 @@
 14. [Building & Shipping with EAS](#14-building--shipping-with-eas) **[A]**
 15. [Debugging](#15-debugging) **[I]**
 16. [Testing](#16-testing) **[I/A]**
-17. [Tips, Tricks & Gotchas](#17-tips-tricks--gotchas) **[I/A]**
-18. [Study Path & Build-to-Learn Projects](#18-study-path--build-to-learn-projects)
+17. [Secure Storage & Encrypted Caching (Banking-Grade)](#17-secure-storage--encrypted-caching-banking-grade) **[I/A]**
+18. [Biometric Authentication (Face ID / Touch ID / Fingerprint)](#18-biometric-authentication-face-id--touch-id--fingerprint) **[I/A]**
+19. [Device APIs & Permissions — The Complete Reference](#19-device-apis--permissions--the-complete-reference) **[I/A]**
+20. [Mobile Security Hardening (Banking-Grade)](#20-mobile-security-hardening-banking-grade) **[A]**
+21. [Production Release: App Store & Play Store](#21-production-release-app-store--play-store) **[A]**
+22. [Tips, Tricks & Gotchas](#22-tips-tricks--gotchas) **[I/A]**
+23. [Study Path & Build-to-Learn Projects](#23-study-path--build-to-learn-projects)
 
 ---
 
@@ -74,7 +79,7 @@ Each box is a real component you'll hear about and occasionally debug:
 - **TurboModules** — native modules are lazily loaded and called through JSI; faster startup, no JSON-serialization tax.
 - **JSI** — the underlying glue (above) that makes the other two possible.
 
-**Why you care:** mostly you don't have to *do* anything — it's on by default. Two practical consequences: (1) some old native libraries aren't yet New-Architecture-compatible — check `reactnative.directory`, filter "New Architecture" (disabling is a last resort, §17); (2) Reanimated UI-thread animations (§12) stay smooth even when JS is busy, since they no longer cross a JSON bridge.
+**Why you care:** mostly you don't have to *do* anything — it's on by default. Two practical consequences: (1) some old native libraries aren't yet New-Architecture-compatible — check `reactnative.directory`, filter "New Architecture" (disabling is a last resort, §22); (2) Reanimated UI-thread animations (§12) stay smooth even when JS is busy, since they no longer cross a JSON bridge.
 
 > **⚡ Version note:** In SDK 52 and 53, `newArchEnabled: true` is the default in `app.json` for new projects. The legacy bridge still exists as a fallback for incompatible libraries, but is being removed. Treat the New Architecture as the baseline.
 
@@ -2514,7 +2519,1624 @@ maestro test .maestro/login.yaml
 
 ---
 
-## 17. Tips, Tricks & Gotchas
+## 17. Secure Storage & Encrypted Caching (Banking-Grade)
+
+Storing data on a phone is the single most common place a "secure" mobile app silently leaks money. A login screen can be flawless and the TLS pinning immaculate, yet if the app drops a JWT into `AsyncStorage`, or lets TanStack Query persist a cache full of account balances to plain disk, then anyone who later gets the device — or pulls an unencrypted OS backup — owns the data. This section is about the disk: where each kind of value is *allowed* to live, how the OS hardware-backed keystores actually protect it, and how to encrypt the bulk data and caches that don't fit in the keystore. It assumes the SecureStore basics from §9.5, biometrics from §18, and the broader hardening (jailbreak/root detection, tamper response) from §20.
+
+### 17.1 The mobile storage threat model & storage tiers **[A]**
+
+Before choosing an API, decide *what you are defending against*. On mobile the realistic threats are: (1) a **lost or stolen device** that is later powered on and attacked at the lock screen; (2) a **jailbroken/rooted device** where the attacker has root and can read app sandboxes and dump process memory; (3) **OS backups** (iCloud/iTunes, Android Auto Backup) that copy app data off-device to a place you don't control; and (4) **other apps / malware** on the same device probing shared storage. Banking apps must assume all four can happen to *some* of their users.
+
+Those threats map onto a tier list. Pick the *lowest-privilege* tier that still works:
+
+| Tier | Mechanism | Protects against | Use for |
+|------|-----------|------------------|---------|
+| In-memory only | JS variable / React state, never written | Disk theft, backups (but not a live root memory dump) | Short-lived secrets: the plaintext access token, a decrypted DEK, a one-time PIN |
+| SecureStore | iOS Keychain / Android Keystore (hardware-backed) | Lost device, backups (with `_THIS_DEVICE_ONLY`), other apps | Small secrets ≤ ~2 KB: refresh tokens, a key-encryption key, device id |
+| Encrypted DB / MMKV | SQLCipher / MMKV `encryptionKey`, key in SecureStore | Lost device, backups; root if biometric-gated key | Bulk sensitive records: offline transactions, statements, contacts |
+| Envelope-encrypted file | AES-256-GCM blob on disk, DEK in SecureStore | Lost device, backups | Large blobs/documents that don't fit a DB row (PDF statements, images) |
+| Plain AsyncStorage / disk | Unencrypted key-value | **Nothing** sensitive | UI prefs, feature flags, non-PII cache keys only |
+
+The rule that prevents most incidents: **`AsyncStorage` (and any plain disk cache) is NOT for secrets.** It is a convenience store for theme choices and "has the user seen the onboarding" booleans. The moment a value is a token, PII, a balance, or anything an attacker would want, it moves up a tier. Everything else in this section is the detail of the upper tiers.
+
+### 17.2 `expo-secure-store` in depth **[A]**
+
+`expo-secure-store` is the front door to the platform keystores. On **iOS** it stores items in the **Keychain**; on **Android** it stores an entry whose value is encrypted with a key held in the **Android Keystore**. The Keystore key is **hardware-backed** wherever the device supports it — a dedicated Secure Enclave (iOS) or a TEE / **StrongBox** secure element (Android). The practical consequence: the raw key material never enters your app's memory and cannot be exported, even on a rooted device. An attacker with root can ask the OS to *use* the key (so a stolen-but-unlocked device is still at risk — that's what `requireAuthentication` and `_THIS_DEVICE_ONLY` address), but they cannot copy it off the phone.
+
+**`keychainAccessible` — when the value is readable.** This is the most important banking knob. It controls the lock-state required to decrypt, and whether the item is eligible for backup/sync:
+
+- `WHEN_UNLOCKED` (default) — readable only while the device is unlocked; eligible for backup. Foreground-only secrets.
+- `AFTER_FIRST_UNLOCK` — readable after the first unlock since boot, including while subsequently locked; needed for background work (silent token refresh, push handling).
+- `WHEN_UNLOCKED_THIS_DEVICE_ONLY` / `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` — same as above **but never leaves the device**: excluded from iCloud Keychain sync and from encrypted backups. **For banking, always use a `_THIS_DEVICE_ONLY` variant** so a refresh token can never resurface on a restored or synced second device.
+
+**`requireAuthentication`** gates the value behind a fresh biometric / passcode check at *read* time (see §18). Reading throws if the user fails or cancels. Use it for the highest-value items (the key-encryption key, an offline-payment key) so that even an unlocked, stolen phone yields nothing without the user's face or PIN. Note the platform caveat: a value written with `requireAuthentication` may become unreadable if the user changes their biometric enrollment — treat that as a logout/re-enroll signal (§17.6), not a crash.
+
+**Size limit:** SecureStore targets small secrets (~2 KB per item on Android via `EncryptedSharedPreferences`/Keystore; Keychain is more generous but treat 2 KB as the design ceiling). Bulk data does **not** go here — it goes through envelope encryption (§17.3) or an encrypted DB (§17.4). Keep **keys namespaced** (`auth.refreshToken`, not `token`) so logout can wipe a known set, and **delete on logout**.
+
+```ts
+import * as SecureStore from 'expo-secure-store';
+
+// Hardware-backed, device-only, biometric-gated refresh token.
+export async function saveRefreshToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync('auth.refreshToken', token, {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    requireAuthentication: true,          // face/touch/passcode at read time (§18)
+    authenticationPrompt: 'Unlock your account',
+  });
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync('auth.refreshToken', {
+      requireAuthentication: true,
+      authenticationPrompt: 'Unlock your account',
+    });
+  } catch {
+    // User cancelled biometrics, or enrollment changed -> treat as no token.
+    return null;
+  }
+}
+
+// Logout / tamper: wipe every known secret key (namespaced -> enumerable).
+const SECRET_KEYS = ['auth.refreshToken', 'crypto.dek', 'db.key'] as const;
+export async function wipeSecureStore(): Promise<void> {
+  await Promise.all(SECRET_KEYS.map((k) => SecureStore.deleteItemAsync(k)));
+}
+```
+
+> **Why not store the *access* token in SecureStore?** It's short-lived and re-fetchable from the refresh token. Keep it **in memory only** (§17.1). The fewer long-lived secrets on disk, the smaller the blast radius — see the "what NOT to store" rule in §17.6.
+
+### 17.3 Envelope encryption for bulk data **[A]**
+
+SecureStore can't hold a 4 MB statement PDF or a 50 KB JSON blob of cached transactions. The standard pattern for "encrypt a lot of data with a key the OS protects" is **envelope encryption**: generate a random **data encryption key (DEK)**, use the DEK to encrypt the payload with **authenticated** symmetric crypto (AES-256-GCM), write the ciphertext to the filesystem, and store *only the small DEK* in SecureStore. The hardware-backed keystore guards the tiny key; the key guards the big blob.
+
+Non-negotiable crypto rules, because this is where homegrown code goes wrong:
+
+- **Never roll your own crypto.** Use a vetted, audited primitive. Do not invent a cipher, a mode, or a padding scheme.
+- **Authenticated encryption only** — AES-**GCM** (or XChaCha20-Poly1305). The auth tag detects tampering; plain AES-CBC does not and is exploitable.
+- **A fresh random nonce/IV per message.** Never reuse a nonce under the same key — GCM nonce reuse is catastrophic. Generate it from a CSPRNG (`expo-crypto`'s `getRandomBytesAsync`, which is OS-backed), not `Math.random`.
+- **Store nonce + tag alongside ciphertext** (they're not secret); store the **DEK** in SecureStore.
+
+```ts
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
+import { gcm } from '@noble/ciphers/aes';                  // vetted, audited
+import { bytesToHex, hexToBytes } from '@noble/ciphers/utils';
+
+const DEK_KEY = 'crypto.dek';
+
+// 256-bit DEK from an OS CSPRNG; persisted device-only in the keystore.
+async function getOrCreateDek(): Promise<Uint8Array> {
+  const existing = await SecureStore.getItemAsync(DEK_KEY);
+  if (existing) return hexToBytes(existing);
+  const dek = Crypto.getRandomBytes(32);                  // 32 bytes = AES-256
+  await SecureStore.setItemAsync(DEK_KEY, bytesToHex(dek), {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  });
+  return dek;
+}
+
+export async function encryptToFile(name: string, plaintext: string): Promise<void> {
+  const dek = await getOrCreateDek();
+  const nonce = Crypto.getRandomBytes(12);                // fresh per message
+  const ct = gcm(dek, nonce).encrypt(new TextEncoder().encode(plaintext));
+  // Envelope on disk: nonce ‖ ciphertext+tag, hex-encoded.
+  const blob = bytesToHex(nonce) + ':' + bytesToHex(ct);
+  await FileSystem.writeAsStringAsync(FileSystem.documentDirectory + name, blob);
+}
+
+export async function decryptFromFile(name: string): Promise<string> {
+  const dek = await getOrCreateDek();
+  const blob = await FileSystem.readAsStringAsync(FileSystem.documentDirectory + name);
+  const [nHex, cHex] = blob.split(':');
+  const pt = gcm(dek, hexToBytes(nHex)).decrypt(hexToBytes(cHex));   // throws on tamper
+  return new TextDecoder().decode(pt);
+}
+```
+
+The same envelope idea — wrap a bulk key with a key the keystore protects — is exactly the encryption-at-rest pattern documented for servers in `GO_JWT_ARGON2_GUIDE.md`; the difference here is that SecureStore plays the role the KMS/master key plays server-side. Decryption *throws* on a bad auth tag: treat that exception as a possible tamper signal (§20), not a parse error to swallow.
+
+### 17.4 Encrypted local database & MMKV **[A]**
+
+For an **offline-first** banking app that holds many sensitive rows — pending transfers, a statement ledger, beneficiary lists — you want queryable storage, not a pile of encrypted files. Use an **encrypted SQLite**. The strongest option in 2026 is **`@op-engineering/op-sqlite` built with SQLCipher**, which transparently encrypts the whole database file with AES-256; you supply the key. Keep that DB key in SecureStore (optionally biometric-gated, §18) and pass it when opening the connection. The plaintext key lives in memory only for the session.
+
+```ts
+import { open } from '@op-engineering/op-sqlite';
+import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
+import { bytesToHex } from '@noble/ciphers/utils';
+
+async function getDbKey(): Promise<string> {
+  let key = await SecureStore.getItemAsync('db.key', { requireAuthentication: true });
+  if (!key) {
+    key = bytesToHex(Crypto.getRandomBytes(32));
+    await SecureStore.setItemAsync('db.key', key, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+      requireAuthentication: true,
+    });
+  }
+  return key;
+}
+
+export async function openSecureDb() {
+  const db = open({ name: 'ledger.db', encryptionKey: await getDbKey() });   // SQLCipher
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS txns (id TEXT PRIMARY KEY, amount_cents INTEGER, memo TEXT)'
+  );
+  return db;
+}
+```
+
+Alternatively, `expo-sqlite` can be paired with an application-level encryption layer (encrypt sensitive columns with the §17.3 DEK before insert), but a SQLCipher-backed file is simpler and encrypts indexes and the WAL too — prefer it when you can.
+
+For fast encrypted **key-value** (settings that *are* sensitive, small per-user state, a secure read-through cache index), **`react-native-mmkv`** is excellent: it's an order of magnitude faster than AsyncStorage and supports an `encryptionKey`. Store that key in SecureStore, same pattern:
+
+```ts
+import { MMKV } from 'react-native-mmkv';
+import * as SecureStore from 'expo-secure-store';
+
+const key = await SecureStore.getItemAsync('mmkv.key');   // created like db.key above
+export const secureKV = new MMKV({ id: 'secure', encryptionKey: key ?? undefined });
+secureKV.set('lastSyncedBalanceCents', 1042311);          // encrypted at rest
+```
+
+MMKV is a great backing store for the *encrypted cache persister* in the next subsection, because writes are synchronous and fast — but remember MMKV's own encryption is only as strong as where the key lives, which is why the key always comes from the keystore.
+
+### 17.5 Secure caching of data (encrypted persistence + eviction) **[A]**
+
+This is the requirement most teams miss. **TanStack Query** (§9.3), Zustand stores, image caches, and ad-hoc API caches are wonderful for UX — and by default they serialize to **plain disk** when you add a persister. If those caches contain balances, transactions, names, or (worst of all) tokens, you've just undone SecureStore. Two principles fix it: **encrypt anything sensitive before it touches disk**, and **evict aggressively** on the events that matter (logout, app backgrounding, integrity failure).
+
+**(a) An encrypted persister for TanStack Query.** Wrap a fast store (MMKV) and run every write through the §17.3 DEK so the dehydrated cache is ciphertext on disk:
+
+```ts
+import { QueryClient } from '@tanstack/react-query';
+import { persistQueryClient } from '@tanstack/react-query-persist-client';
+import { gcm } from '@noble/ciphers/aes';
+import { bytesToHex, hexToBytes } from '@noble/ciphers/utils';
+import * as Crypto from 'expo-crypto';
+import { secureKV } from './mmkv';        // §17.4
+
+async function encryptedPersister(dek: Uint8Array) {
+  const STORE = 'rq.cache';
+  return {
+    persistClient: (client: unknown) => {
+      const nonce = Crypto.getRandomBytes(12);
+      const ct = gcm(dek, nonce).encrypt(
+        new TextEncoder().encode(JSON.stringify(client))
+      );
+      secureKV.set(STORE, bytesToHex(nonce) + ':' + bytesToHex(ct));
+    },
+    restoreClient: () => {
+      const blob = secureKV.getString(STORE);
+      if (!blob) return undefined;
+      try {
+        const [n, c] = blob.split(':');
+        const pt = gcm(dek, hexToBytes(n)).decrypt(hexToBytes(c));
+        return JSON.parse(new TextDecoder().decode(pt));
+      } catch {
+        secureKV.delete(STORE);          // tampered/corrupt -> drop, don't trust
+        return undefined;
+      }
+    },
+    removeClient: () => secureKV.delete(STORE),
+  };
+}
+
+export async function setupPersistence(client: QueryClient, dek: Uint8Array) {
+  persistQueryClient({
+    queryClient: client,
+    persister: await encryptedPersister(dek),
+    maxAge: 1000 * 60 * 30,              // (b) hard TTL: 30 min max-age on the cache
+  });
+}
+```
+
+**(b) TTL / max-age and eviction.** Give the persisted cache a hard `maxAge` so stale PII can't linger for days. Pair it with `staleTime`/`gcTime` tuning on the queries themselves: short `gcTime` for sensitive queries so they're garbage-collected from memory quickly. Crucially, **evict on app-background** — when the user swipes the app away, a balance shouldn't sit decrypted in memory or rendered behind the app switcher:
+
+```ts
+import { AppState } from 'react-native';
+AppState.addEventListener('change', (s) => {
+  if (s === 'background' || s === 'inactive') {
+    queryClient.removeQueries();          // drop sensitive in-memory cache
+    // and blur/blank the screen for the app switcher (see §20)
+  }
+});
+```
+
+**(c) Never cache auth tokens in the query cache.** Tokens are not query data. The access token lives in memory (§17.1); the refresh token lives in SecureStore (§17.2). Filter them out — don't `useQuery` your way into persisting a credential, and don't let an interceptor stash a token in a Zustand store that's persisted to disk.
+
+**(d) `gcTime` tuning.** Treat `gcTime` (formerly `cacheTime`) as a data-minimization control: the lower it is, the sooner sensitive results leave memory. For account/transaction queries, a few minutes is plenty; never set `gcTime: Infinity` on PII.
+
+**(e) Wipe everything on logout or integrity failure.** Logout is not "clear the token" — it's **scorched earth**: clear the query cache, delete the persisted encrypted cache, close and (where required by policy) delete the encrypted DB, and wipe SecureStore. If §20 detects a jailbreak/root or a tamper signal, run the same teardown before exiting.
+
+```ts
+export async function secureLogout() {
+  queryClient.clear();                    // in-memory
+  secureKV.delete('rq.cache');            // persisted encrypted cache
+  secureKV.clearAll();                    // any other encrypted KV
+  await wipeSecureStore();                // §17.2: tokens, DEK, db.key
+  // optionally: delete ledger.db / encrypted files for a clean device
+}
+```
+
+For server-side caches that mirror this data (e.g. a Redis layer fronting the API), the same TTL-and-eviction discipline applies on the backend — see `REDIS_GUIDE.md` for short-TTL, no-PII cache key design so the device cache and the server cache agree on what's safe to keep and for how long.
+
+### 17.6 Lifecycle hygiene & the "what NOT to store" rule **[A]**
+
+Encryption is necessary but not sufficient; *lifecycle* is what keeps the encrypted footprint from accumulating risk. Wire teardown to the events that change the trust assumptions:
+
+- **On logout** — run `secureLogout()` (§17.5): in-memory, persisted cache, DB, and SecureStore all cleared.
+- **On biometric-enrollment change** — if a `requireAuthentication` read starts failing because the user added/removed a face or fingerprint, treat it as "the device's trusted user may have changed": force re-auth and re-provision keys rather than silently retrying.
+- **On detected tamper / jailbreak / root** (§20) — wipe before continuing; assume the sandbox is readable.
+
+Defensive habits that cost nothing:
+
+- **Never log secrets.** No `console.log(token)`, no full request/response bodies in production, no secrets in crash-report breadcrumbs (scrub them). Logs are exfiltrated constantly.
+- **Disable autofill & keyboard caching on secret fields.** For PINs/passwords use `secureTextEntry`, `autoComplete="off"`, `textContentType="oneTimeCode"` (to dodge strong-password autofill where unwanted), and `keyboardType` choices that avoid predictive/learned text. The keyboard can otherwise cache typed secrets.
+- **Blank the app-switcher snapshot** (§20) so balances don't leak into the OS task preview.
+- **The "what NOT to store" rule:** *don't persist a long-lived secret you can re-fetch.* Access tokens are re-derived from the refresh token; derived display data can be re-queried. Every avoided persisted secret is one fewer thing an attacker can steal. Persist the minimum, encrypt what you must persist, and put the keys in hardware.
+
+> **Banking-grade storage checklist:**
+> - [ ] `AsyncStorage`/plain disk holds **no** secrets, tokens, or PII — UI prefs only.
+> - [ ] Secrets in SecureStore use a **`_THIS_DEVICE_ONLY`** accessibility class (no iCloud/backup sync).
+> - [ ] Highest-value secrets (KEK/DEK, db key) are **`requireAuthentication`** biometric-gated (§18).
+> - [ ] Access token is **in-memory only**; refresh token in SecureStore; **no token in any disk cache**.
+> - [ ] Bulk/sensitive data uses **envelope encryption** (AES-256-GCM, fresh nonce, auth tag) or **SQLCipher / MMKV `encryptionKey`**, with the key from the keystore.
+> - [ ] **Only vetted crypto** (`@noble/ciphers`, SQLCipher); no homegrown ciphers; CSPRNG (`expo-crypto`) for keys/nonces.
+> - [ ] TanStack Query / Zustand / image caches are **encrypted before disk** and have a hard **`maxAge` / `gcTime`**.
+> - [ ] Caches **evict on app-background** and on logout; decryption failures **drop** the cache, never trust it.
+> - [ ] **Logout = scorched earth**: clear memory, persisted cache, encrypted DB, and SecureStore.
+> - [ ] Same teardown runs on **tamper/jailbreak/root** (§20) and on **biometric-enrollment change**.
+> - [ ] **No secrets in logs**; secret fields disable autofill/keyboard caching; app-switcher snapshot blanked.
+
+---
+
+## 18. Biometric Authentication (Face ID / Touch ID / Fingerprint)
+
+Biometrics feel like the natural "lock" for a banking app: the user glances at the phone or taps the sensor and the vault opens. But there is a deep and dangerous misconception baked into how most tutorials use them, and getting it wrong is the single most common security failure in mobile finance apps. This section is written for **Expo SDK 54 / RN 0.81 / React 19 (June 2026)**, and it assumes you have already read §17 (secure storage with Keychain/Keystore) — biometrics on their own are nearly worthless without it.
+
+The mental model to hold throughout: a biometric prompt is a question the operating system answers with a **boolean** — "did a face/finger that the OS trusts just appear?" That boolean travels into your JavaScript. JavaScript is the least trustworthy place in the entire system: it can be patched on a jailbroken device, intercepted by a Frida hook, or simply skipped by an attacker who recompiles your app. So a biometric check is only as strong as **what it gates**, and the only thing strong enough to gate banking secrets is the OS-enforced key release described in §18.4 onward.
+
+### 18.1 Presentation-only vs key-bound biometrics — the #1 mistake **[A]**
+
+When people first reach for biometrics they write something like "if `authenticateAsync()` returns success, show the account screen." This is **presentation-only** biometrics: the biometric event is observed by your code, and your code *decides* to reveal data it already had in memory or in plaintext storage. Nothing about the data itself depended on the biometric. An attacker who can manipulate the JS runtime, or who pulls the app's storage off a rooted device, never needs to pass the prompt at all — the secret was sitting there the whole time. For a to-do app this is fine. For anything holding money, a session token, or PII, it is a critical vulnerability.
+
+**Key-bound** biometrics are the opposite. Here the sensitive value (a refresh token, an encryption key, a session key) is stored inside the hardware-backed Keychain (iOS) or Keystore (Android) **with an access-control flag that tells the OS: do not release these bytes to any process until a biometric or device passcode succeeds.** The biometric check is no longer advisory — it is a *precondition the OS itself enforces* before the ciphertext can be decrypted. There is no boolean for an attacker to forge, because the boolean lives inside the secure hardware, not in your JS. This is the only acceptable pattern for banking, and the rest of this section builds toward it.
+
+| Property | Presentation-only | Key-bound (Keychain/Keystore) |
+| --- | --- | --- |
+| What enforces the gate | Your JS `if` statement | The OS / secure hardware |
+| Bypass on rooted/jailbroken device | Trivial | Requires breaking the secure element |
+| Protects data at rest | No | Yes — value is encrypted, key locked behind biometric |
+| Survives the app being recompiled | No | Yes |
+| Acceptable for banking | **No** | **Yes** |
+
+> The rule: never treat `authenticateAsync()`'s return value as authorization for anything valuable. Treat it as UX. Real authorization comes from §18.4 (OS-released keys) and §18.8 (server-side re-auth).
+
+### 18.2 Capability probing with `expo-local-authentication` **[A]**
+
+Before you ever show a biometric button you must know what the device can actually do. `expo-local-authentication` exposes the device's biometric state through three probes, and you should call all of them — hardware presence, enrollment, and the *type* of biometric — because the UX copy ("Sign in with Face ID" vs "with your fingerprint") and even whether you offer the feature depend on the answers.
+
+- `hasHardwareAsync()` — does the device have a sensor at all? A budget Android phone or an old iPad may not.
+- `isEnrolledAsync()` — has the user actually registered a face/finger? Hardware can exist with nothing enrolled, in which case prompting will fail.
+- `supportedAuthenticationTypesAsync()` — returns an array of `AuthenticationType` values (`FACIAL_RECOGNITION`, `FINGERPRINT`, `IRIS`) so you can label the button correctly and pick the right icon.
+
+```ts
+// biometrics/capabilities.ts
+import * as LocalAuthentication from 'expo-local-authentication';
+
+export type BiometricKind = 'face' | 'fingerprint' | 'iris' | 'none';
+
+export interface BiometricCapability {
+  hasHardware: boolean;
+  isEnrolled: boolean;
+  kinds: BiometricKind[];
+  /** Safe to actually prompt the user right now. */
+  usable: boolean;
+}
+
+export async function getBiometricCapability(): Promise<BiometricCapability> {
+  const [hasHardware, isEnrolled, types] = await Promise.all([
+    LocalAuthentication.hasHardwareAsync(),
+    LocalAuthentication.isEnrolledAsync(),
+    LocalAuthentication.supportedAuthenticationTypesAsync(),
+  ]);
+
+  const kinds: BiometricKind[] = types.map((t) => {
+    switch (t) {
+      case LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION:
+        return 'face';
+      case LocalAuthentication.AuthenticationType.FINGERPRINT:
+        return 'fingerprint';
+      case LocalAuthentication.AuthenticationType.IRIS:
+        return 'iris';
+      default:
+        return 'none';
+    }
+  });
+
+  return {
+    hasHardware,
+    isEnrolled,
+    kinds: kinds.length ? kinds : ['none'],
+    usable: hasHardware && isEnrolled,
+  };
+}
+```
+
+Note that `supportedAuthenticationTypesAsync()` reports what the *hardware supports*, not necessarily what is enrolled — always combine it with `isEnrolledAsync()` before deciding the feature is `usable`.
+
+### 18.3 A robust `authenticate()` wrapper — handling every result **[A]**
+
+`authenticateAsync(options)` is where the prompt actually appears. The naive call ignores the rich set of failure modes the OS reports, and in a banking app each one needs different handling: a *user cancel* should silently fall back to the PIN screen, a *lockout* must tell the user to wait or use the passcode, and *not enrolled* should route them to settings rather than spinning forever. The options also matter for security and UX:
+
+- `promptMessage` — the explanation shown in the system sheet (required for good UX; iOS shows it under the Face ID icon).
+- `cancelLabel` — text for the cancel button.
+- `fallbackLabel` — text for the "use passcode" button on iOS (empty string hides it).
+- `disableDeviceFallback` — when `true`, the OS will **not** offer the device passcode as a fallback. For pure biometric step-up you sometimes want `true`, but be careful: if biometrics lock out and there is no device fallback, the user is stuck unless *you* provide an app-level PIN (see §18.7).
+- `requireConfirmation` (Android) — for face unlock, require an explicit confirm tap after recognition; leave `true` for high-value actions so a glance alone can't authorize a transfer.
+
+```ts
+// biometrics/authenticate.ts
+import * as LocalAuthentication from 'expo-local-authentication';
+import { getBiometricCapability } from './capabilities';
+
+export type AuthOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'not_available' | 'not_enrolled' | 'lockout'
+        | 'user_cancel' | 'system_cancel' | 'fallback' | 'unknown'; message: string };
+
+export async function authenticate(opts: {
+  prompt: string;
+  cancelLabel?: string;
+  allowDeviceFallback?: boolean; // false => biometric only
+  requireConfirmation?: boolean;
+}): Promise<AuthOutcome> {
+  const cap = await getBiometricCapability();
+  if (!cap.hasHardware) return { ok: false, reason: 'not_available', message: 'No biometric hardware.' };
+  if (!cap.isEnrolled) return { ok: false, reason: 'not_enrolled', message: 'No biometrics enrolled.' };
+
+  const res = await LocalAuthentication.authenticateAsync({
+    promptMessage: opts.prompt,
+    cancelLabel: opts.cancelLabel ?? 'Cancel',
+    fallbackLabel: opts.allowDeviceFallback === false ? '' : 'Use passcode',
+    disableDeviceFallback: opts.allowDeviceFallback === false,
+    requireConfirmation: opts.requireConfirmation ?? true,
+  });
+
+  if (res.success) return { ok: true };
+
+  // res.error is a string code from the OS; map the important ones.
+  switch (res.error) {
+    case 'user_cancel':
+    case 'app_cancel':
+      return { ok: false, reason: 'user_cancel', message: 'Cancelled by user.' };
+    case 'system_cancel':
+      return { ok: false, reason: 'system_cancel', message: 'Interrupted by the system.' };
+    case 'user_fallback':
+      return { ok: false, reason: 'fallback', message: 'User chose the passcode fallback.' };
+    case 'lockout':
+    case 'lockout_permanent':
+      return { ok: false, reason: 'lockout', message: 'Too many attempts. Locked out.' };
+    case 'not_enrolled':
+      return { ok: false, reason: 'not_enrolled', message: 'No biometrics enrolled.' };
+    case 'not_available':
+      return { ok: false, reason: 'not_available', message: 'Biometrics unavailable.' };
+    default:
+      return { ok: false, reason: 'unknown', message: res.error ?? 'Unknown error.' };
+  }
+}
+```
+
+Treat `lockout` specially: after several failures iOS/Android temporarily (or permanently, until passcode) disables biometrics. Your only recovery there is the device passcode (if you allowed fallback) or your own app PIN — never leave the user with a dead button.
+
+### 18.4 iOS config: `NSFaceIDUsageDescription` (or Face ID crashes) **[A]**
+
+On iOS, the very first time your app triggers Face ID the OS reads the `NSFaceIDUsageDescription` string from `Info.plist`. **If it is missing, the app does not show a friendly error — it crashes.** In Expo's managed workflow you set it through `app.config` (the `expo-local-authentication` config plugin will inject it, but providing the string explicitly is the reliable, reviewable way). The string is shown to the user in the permission context, so write it like a human, referencing your bank's brand.
+
+```json
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Acme Bank uses Face ID to unlock the app and approve transactions securely."
+      }
+    },
+    "plugins": [
+      ["expo-local-authentication", {
+        "faceIDPermission": "Acme Bank uses Face ID to unlock the app and approve transactions securely."
+      }]
+    ]
+  }
+}
+```
+
+Android needs no analogous usage string for the biometric prompt itself, but the `USE_BIOMETRIC` permission is added for you by the library. Always run a real EAS build (not just Expo Go, which bundles its own Info.plist) to verify the crash-on-missing-string case is handled — see permissions handling in §19.
+
+### 18.5 The secure pattern: key-bound secrets via `expo-secure-store` **[A]**
+
+This is the heart of banking-grade biometrics and the payoff of §18.1. Instead of storing a token and *then* gating it with a JS boolean, you store it in `expo-secure-store` with `requireAuthentication: true`. That flag wires the Keychain/Keystore item to the device's biometric/passcode gate at the OS level: the bytes are encrypted by a key that the secure hardware will only use after a successful local authentication. Pair it with `keychainAccessible: WHEN_UNLOCKED_THIS_DEVICE_ONLY` (or `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`) so the item is never written to an iCloud/Keystore backup and never leaves this physical device — essential so a restored backup on an attacker's phone can't carry the secret.
+
+```ts
+// biometrics/vault.ts — the OS-enforced unlock pattern (combine with §17)
+import * as SecureStore from 'expo-secure-store';
+
+const DATA_KEY = 'acme.session.refreshToken';
+
+// Write once at login. The OS, not our JS, guards future reads.
+export async function storeProtectedSecret(value: string): Promise<void> {
+  await SecureStore.setItemAsync(DATA_KEY, value, {
+    requireAuthentication: true, // <-- biometric/passcode required to READ
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    authenticationPrompt: 'Unlock Acme Bank',
+  });
+}
+
+// Reading TRIGGERS the system biometric prompt. If it fails, no bytes come back.
+export async function readProtectedSecret(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(DATA_KEY, {
+      requireAuthentication: true,
+      authenticationPrompt: 'Unlock Acme Bank',
+    });
+  } catch {
+    // Auth failed / cancelled / item invalidated by enrollment change (§18.7).
+    return null;
+  }
+}
+```
+
+The crucial difference from §18.3: here you do **not** call `authenticateAsync()` yourself and then read a plaintext token. The act of *reading the secret* is what raises the prompt, and a failed prompt means the decryption simply does not happen. There is no window in which the plaintext exists without a successful biometric. That is OS-enforced protection, and it is the line between a real banking vault and a UX gate.
+
+### 18.6 Banking login, step-up, and inactivity auto-lock **[A]**
+
+With the key-bound vault in place, three banking flows fall out naturally. The common thread: **never store the user's password.** Store a long-lived, server-revocable **refresh token** (or session key), protected by the vault, and exchange it for short-lived access tokens — see token/session concepts in `GO_JWT_ARGON2_GUIDE.md`.
+
+**Biometric login** — on first login the user authenticates with username/password to your server; the server returns a refresh token; you stash it via `storeProtectedSecret`. On every later launch, reading it raises Face ID and, on success, you silently exchange it for an access token. The password is never persisted and never re-entered.
+
+**Step-up / transaction signing** — listing balances might only need a valid session, but moving money must require a *fresh* biometric immediately before the action. Do not reuse the login prompt's result; demand a new one whose success releases a signing key or simply proves liveness right then, and have the server treat that as elevated authorization (§18.8).
+
+```tsx
+// flows.tsx — login bootstrap + per-transaction step-up
+import { readProtectedSecret, storeProtectedSecret } from './vault';
+import { authenticate } from './authenticate';
+import { exchangeRefreshToken, postTransfer } from '../api';
+
+export async function biometricLogin(): Promise<boolean> {
+  const refresh = await readProtectedSecret(); // raises biometric prompt
+  if (!refresh) return false;
+  const access = await exchangeRefreshToken(refresh); // server re-validates
+  return Boolean(access);
+}
+
+export async function approveTransfer(payeeId: string, amount: number) {
+  const res = await authenticate({
+    prompt: `Approve transfer of $${amount}`,
+    allowDeviceFallback: false, // force a real, fresh biometric
+    requireConfirmation: true,
+  });
+  if (!res.ok) throw new Error('Step-up authentication failed.');
+  // The server still independently verifies the elevated session — §18.8.
+  return postTransfer({ payeeId, amount, stepUp: true });
+}
+```
+
+**Inactivity auto-lock** — banking apps must re-lock after a short idle period and on backgrounding, so a phone left on a table or snatched mid-session can't be used. Track the last-active timestamp, listen to `AppState`, and on resume (or after N minutes) drop any in-memory access token and force biometric re-auth, which re-reads the vault. See the broader hardening and step-up guidance in §20.
+
+```tsx
+import { AppState } from 'react-native';
+import { useEffect, useRef } from 'react';
+
+export function useInactivityLock(onLock: () => void, timeoutMs = 2 * 60_000) {
+  const backgroundedAt = useRef<number | null>(null);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        backgroundedAt.current = Date.now();
+      } else if (state === 'active' && backgroundedAt.current) {
+        if (Date.now() - backgroundedAt.current >= timeoutMs) onLock();
+        backgroundedAt.current = null;
+      }
+    });
+    return () => sub.remove();
+  }, [onLock, timeoutMs]);
+}
+```
+
+### 18.7 Enrollment-change invalidation (critical for banking) **[A]**
+
+Here is the attack that ruins a careless implementation: an attacker who briefly holds an unlocked phone enrolls *their own* fingerprint or face. Now the device's biometric set includes them. If your vault's secret survives that change, the attacker re-opens your app and their finger unlocks the victim's banking session. Defeating this requires telling the secure hardware to **invalidate the key whenever the enrolled biometric set changes.**
+
+- **iOS:** the Keychain access control must use *current-set* semantics (conceptually `biometryCurrentSet` / `kSecAccessControlBiometryCurrentSet`). Adding or removing a face/fingerprint changes the "current set," and the key is automatically destroyed — the secret becomes permanently unreadable, which is exactly what you want.
+- **Android:** the Keystore key must be generated with `setUserAuthenticationRequired(true)` **and** `setInvalidatedByBiometricEnrollment(true)`. Any new fingerprint enrollment then invalidates the key, throwing `KeyPermanentlyInvalidatedException` on next use.
+
+`expo-secure-store`'s `requireAuthentication` gives you the user-authentication requirement, but as of SDK 54 it does **not** expose fine-grained `biometryCurrentSet` / `setInvalidatedByBiometricEnrollment` control. For genuine banking-grade enrollment-change invalidation you should drop to a native module or use **`react-native-keychain`** with `accessControl: BIOMETRY_CURRENT_SET` (which maps to the platform-specific current-set semantics above) under a development build. Detect the invalidated state the same way regardless: a read/decrypt that previously worked now throws — treat that as "vault invalidated," wipe any local state, and force a full server re-login rather than silently re-prompting.
+
+```ts
+// react-native-keychain (dev build) — current-set, this-device-only
+import * as Keychain from 'react-native-keychain';
+
+await Keychain.setGenericPassword('session', refreshToken, {
+  accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET, // invalidate on enroll change
+  accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
+});
+
+export async function readSessionOrInvalidate() {
+  try {
+    const creds = await Keychain.getGenericPassword({
+      authenticationPrompt: { title: 'Unlock Acme Bank' },
+    });
+    return creds ? creds.password : null;
+  } catch (e) {
+    // Enrollment changed or biometrics removed -> key destroyed.
+    await Keychain.resetGenericPassword();
+    return null; // force full re-login
+  }
+}
+```
+
+### 18.8 UX, fallbacks, and "never trust the client boolean" **[A]**
+
+Two principles close out the section. First, **always provide a non-biometric path that is itself secure.** A user with no enrolled biometrics, a locked-out sensor, or a permanently invalidated key must still get in — but the fallback can't be a plaintext bypass. The right pattern is an **app PIN/passcode** that the user sets, from which you derive an encryption key (Argon2id/PBKDF2 — see `GO_JWT_ARGON2_GUIDE.md` for KDF parameters and rationale) that unlocks the same vault data. Biometrics become the fast path; the PIN-derived key is the recovery path; neither stores the secret in the clear. Handle "no biometrics enrolled" by routing to PIN setup, degrade gracefully on older hardware, and respect accessibility (screen readers, sufficient timeouts). Never lock a paying customer out with no recovery — but never make recovery a backdoor either.
+
+Second, and most important: **the client-side biometric boolean is not authorization for server-side actions.** The OS pass/fail lives on a device you do not control. For anything that moves money or changes account state, the server must independently verify a real, fresh credential — a valid short-lived access token bound to the session, ideally elevated by a step-up signal the server itself can validate (a freshly minted token, a signed nonce, or a server-driven re-auth). Treat the on-device biometric purely as the gate that *releases* a server-trusted secret (§18.5) and as a liveness signal; the actual trust decision happens server-side every time. A device that lies about its biometric result must still be unable to forge a server-accepted transfer. See §20 for the full hardening picture and `GO_JWT_ARGON2_GUIDE.md` for how the server validates and rotates these tokens.
+
+> **Banking-grade biometric checklist:**
+> - **Key-bound, not presentation-only** — secrets live in Keychain/Keystore behind `requireAuthentication: true`; the OS releases bytes, your JS never gates plaintext (§18.1, §18.5).
+> - **`NSFaceIDUsageDescription` set** in `app.config`/Info.plist or iOS Face ID crashes (§18.4).
+> - **`*_THIS_DEVICE_ONLY` accessibility** so secrets never ride into a backup or another device (§18.5).
+> - **Enrollment-change invalidation** — iOS `biometryCurrentSet`, Android `setInvalidatedByBiometricEnrollment(true)`; drop to `react-native-keychain`/native when needed (§18.7).
+> - **Never store the password** — store a revocable refresh/session token instead (§18.6).
+> - **Step-up + inactivity auto-lock** — fresh biometric before money moves; re-lock on idle/background (§18.6, §20).
+> - **Secure fallback** — app PIN deriving a KDF key unlocks the same vault; no plaintext bypass, no lockout with zero recovery (§18.8).
+> - **Server-side re-auth always** — the client biometric boolean is UX, not trust; the server validates fresh credentials for every sensitive action (§18.8, `GO_JWT_ARGON2_GUIDE.md`).
+
+---
+
+## 19. Device APIs & Permissions — The Complete Reference
+
+§10 introduced the device-API surface and the **check → request → handle** permission flow (§10.1) and documented the everyday modules — camera, image-picker, location, notifications, file-system, audio/video, haptics, and sensors. This section finishes the job. It covers the remaining high-value native APIs you'll reach for in real apps, and — more importantly — it gives you the **master permissions reference** that ties every capability to the exact iOS usage-description key and Android `<uses-permission>` entry you must declare. Get permissions wrong and you don't get a bug; you get a hard crash on iOS or an App Store rejection. So we start there.
+
+> **⚡ Version note:** Verified against **Expo SDK 54 / React Native 0.81 (June 2026)**. Always install with `npx expo install <pkg>` so the native module version matches your SDK; `npm install` can pull an incompatible build that crashes at startup.
+
+### 19.1 The Permission Lifecycle, Properly **[I]**
+
+§10.1 showed the happy path. Production code has to handle four states, not two. Every Expo permission object exposes `status` (`'granted' | 'denied' | 'undetermined'`), the convenience boolean `granted`, and the decisive field **`canAskAgain`**. The combination tells you what to do:
+
+- **`undetermined`** — the user has never been asked. You may call `requestPermission()`; the OS will show its one prompt.
+- **`granted`** — proceed.
+- **`denied` + `canAskAgain: true`** — they said no once (or it lapsed). You can ask again, but only with a good reason — show a rationale first.
+- **`denied` + `canAskAgain: false`** — the OS will **never show the dialog again**. Requesting does nothing. Your *only* recovery is to deep-link the user to the system Settings page with `Linking.openSettings()` and let them flip the toggle manually.
+
+```tsx
+import { useCameraPermissions } from 'expo-camera';
+import { Linking, Pressable, Text, View } from 'react-native';
+
+function CameraPermissionGate({ children }: { children: React.ReactNode }) {
+  const [permission, requestPermission] = useCameraPermissions();
+  if (!permission) return null;               // still loading
+  if (permission.granted) return <>{children}</>;
+
+  // Denied. The CTA depends on whether the OS will still show its dialog.
+  const canPrompt = permission.canAskAgain;
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 12 }}>
+      <Text>We use the camera so you can scan a document. We never upload without your tap.</Text>
+      <Pressable onPress={canPrompt ? requestPermission : () => Linking.openSettings()}>
+        <Text>{canPrompt ? 'Allow camera' : 'Open Settings'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+```
+
+**iOS vs Android differ in a way you must design around.** On **iOS** each permission gets exactly **one** native prompt for the app's lifetime — deny it and you're permanently in the `canAskAgain: false` world (Settings is the only path back). That makes the *first* prompt precious: never fire it cold. On **Android** the runtime model is more forgiving — the OS may re-show the dialog, and after two dismissals it enters a "don't ask again" state similar to iOS. Android also exposes a "Allow only this time" option for sensitive permissions (location, camera, mic), so a grant you saw last session may be gone today — **always re-check, never cache "granted" forever.**
+
+The cardinal rule that follows from all of this: **request a permission only at the moment you actually need it (just-in-time), and precede the OS prompt with your own rationale screen** explaining *why*. A pre-prompt screen has two payoffs: dramatically higher grant rates (users who tap "continue" on your screen almost always tap "allow" on the OS one), and App Store compliance — Apple's reviewers reject apps that demand permissions on launch with no context.
+
+**Re-check on focus.** Because the user may revoke a permission in Settings while your app is backgrounded, re-read permission state whenever a screen regains focus rather than trusting a value captured at mount:
+
+```tsx
+import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
+import { getForegroundPermissionsAsync } from 'expo-location';
+
+function useRecheckLocation(onState: (granted: boolean) => void) {
+  useFocusEffect(
+    useCallback(() => {
+      getForegroundPermissionsAsync().then(p => onState(p.granted));
+    }, [onState]),
+  );
+}
+```
+
+**Foreground vs background.** Most permissions are *foreground* — they apply only while your app is on screen. **Location is the dangerous exception.** `expo-location` distinguishes `requestForegroundPermissionsAsync()` (when-in-use) from `requestBackgroundPermissionsAsync()` (always). Background location requires **extra app-config declarations**, a separate "Always Allow" grant the user must reach through Settings on iOS, and a written justification at App Store review — Apple scrutinizes "always" location heavily and will reject apps that request it without a clear, user-visible feature (turn-by-turn navigation, geofenced reminders). **Request foreground first; only escalate to background if a real feature demands it, and tell review exactly why.**
+
+### 19.2 The Config-Plugin / App-Config Model — Where Permission Strings Live **[I]**
+
+You never hand-edit `Info.plist` or `AndroidManifest.xml` in an Expo project — those files are generated during `prebuild`. Instead, each module ships a **config plugin** that injects the right entries at build time, and you supply the human-readable strings through `app.config.ts` (or `app.json`). On **iOS** the plugin writes `NS*UsageDescription` strings into `Info.plist`; on **Android** it adds `<uses-permission>` lines to the manifest. (See §13 for the broader config-plugin / prebuild story.)
+
+**A missing iOS usage string is not a warning — it is a hard crash** the instant you call `request*PermissionsAsync()`, and the build will be rejected by App Store Connect. Conversely, declaring permissions you don't actually use *also* hurts you: it expands your App Store **Data Safety / privacy nutrition label**, and reviewers flag permissions with no corresponding feature. **Declare the minimum.**
+
+```ts
+// app.config.ts — permission strings supplied to each module's config plugin.
+import { ExpoConfig } from 'expo/config';
+
+const config: ExpoConfig = {
+  name: 'Acme',
+  slug: 'acme',
+  ios: {
+    infoPlist: {
+      // These appear verbatim in the OS prompt — write them for the user, not the lawyer.
+      NSCameraUsageDescription: 'Scan documents and receipts.',
+      NSMicrophoneUsageDescription: 'Record voice notes attached to a ticket.',
+      NSPhotoLibraryUsageDescription: 'Attach photos to a report.',
+      NSContactsUsageDescription: 'Invite people you already know.',
+      NSLocationWhenInUseUsageDescription: 'Tag a report with where it happened.',
+      NSFaceIDUsageDescription: 'Unlock the app with Face ID.',
+      NSUserTrackingUsageDescription: 'Used to measure ad performance.',
+    },
+  },
+  android: {
+    permissions: [
+      'android.permission.CAMERA',
+      'android.permission.RECORD_AUDIO',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.READ_CONTACTS',
+    ],
+  },
+  plugins: [
+    // Many modules accept their strings here too; the plugin merges them into the native files.
+    ['expo-camera', { cameraPermission: 'Scan documents and receipts.' }],
+    ['expo-contacts', { contactsPermission: 'Invite people you already know.' }],
+    [
+      'expo-location',
+      {
+        locationAlwaysAndWhenInUsePermission: 'Tag reports and send geofenced reminders.',
+        isAndroidBackgroundLocationEnabled: false, // flip true ONLY if you truly need background
+      },
+    ],
+  ],
+};
+export default config;
+```
+
+After changing any of this you must regenerate native code: `npx expo prebuild --clean` (bare/dev-build) or rely on EAS Build to run prebuild for you. Editing the string at runtime is impossible — it's baked into the binary.
+
+### 19.3 Master Permission Reference Table **[I]**
+
+This is the table to bookmark. Each row maps an Expo capability to the iOS usage-description key you must set and the Android permission(s) the plugin adds. "Limited / partial" entries are the modern OS feature where the user grants access to *some* data, not all.
+
+| Capability (module) | iOS usage-description key(s) | Android permission(s) | Notes |
+|---|---|---|---|
+| Camera (`expo-camera`) | `NSCameraUsageDescription` | `CAMERA` | §10.2. Also needed for in-camera QR scanning (§19.8). |
+| Microphone (`expo-camera`/`expo-audio`) | `NSMicrophoneUsageDescription` | `RECORD_AUDIO` | Required for video recording even if you don't keep audio. |
+| Photo library — read (`expo-image-picker`) | `NSPhotoLibraryUsageDescription` | `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` (Android 13+) | iOS offers **Limited** access — user picks specific photos (see §19.10). §10.3. |
+| Photo library — add only | `NSPhotoLibraryAddUsageDescription` | `WRITE_EXTERNAL_STORAGE` (legacy) | "Add to library" without read; lighter prompt, better for save-only flows. |
+| Media library (`expo-media-library`) | `NSPhotoLibraryUsageDescription` | `READ_MEDIA_*` / `ACCESS_MEDIA_LOCATION` | Full album access + write. Heavier than image-picker. |
+| Location — when in use (`expo-location`) | `NSLocationWhenInUseUsageDescription` | `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | §10. Request this before "always". |
+| Location — always/background | `NSLocationAlwaysAndWhenInUseUsageDescription` | + `ACCESS_BACKGROUND_LOCATION` | Extra config + review justification (§19.1). |
+| Notifications (`expo-notifications`) | (no plist string; prompt is requested at runtime) | `POST_NOTIFICATIONS` (Android 13+) | §10. iOS prompt is fired by `requestPermissionsAsync()`. |
+| Contacts (`expo-contacts`) | `NSContactsUsageDescription` | `READ_CONTACTS`, `WRITE_CONTACTS` | §19.4. |
+| Calendar/Reminders (`expo-calendar`) | `NSCalendarsUsageDescription`, `NSRemindersUsageDescription` | `READ_CALENDAR`, `WRITE_CALENDAR` | iOS 17+ adds "write-only" calendar access. §19.5. |
+| Motion / sensors (`expo-sensors`) | `NSMotionUsageDescription` | `HIGH_SAMPLING_RATE_SENSORS`, `ACTIVITY_RECOGNITION` (pedometer) | §10 sensors; pedometer/step count is the gated case. |
+| Bluetooth (`expo-bluetooth`/BLE libs) | `NSBluetoothAlwaysUsageDescription` | `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` (Android 12+) | Android 12+ split BT into runtime permissions. |
+| Local network (iOS) | `NSLocalNetworkUsageDescription` (+ `NSBonjourServices`) | — | iOS-only prompt; needed for LAN discovery/casting. |
+| Face ID / biometrics (`expo-local-authentication`) | `NSFaceIDUsageDescription` | `USE_BIOMETRIC` | §18. Touch ID/fingerprint needs no plist string. |
+| App Tracking Transparency (`expo-tracking-transparency`) | `NSUserTrackingUsageDescription` | `com.google.android.gms.permission.AD_ID` | Required before reading IDFA / cross-app tracking. §19.13. |
+| Clipboard (`expo-clipboard`) | — | — | No permission, but a **privacy surface** (§19.7). |
+
+### 19.4 `expo-contacts` — Read & Write the Address Book **[A]**
+
+Contacts power "invite a friend" and autocomplete. It's a sensitive permission — reviewers expect a clear feature behind it. Read with a field mask so you don't pull more than you need; you can also create contacts.
+
+```ts
+import * as Contacts from 'expo-contacts';
+
+async function loadEmails() {
+  const { status } = await Contacts.requestPermissionsAsync();
+  if (status !== 'granted') return [];
+  const { data } = await Contacts.getContactsAsync({
+    fields: [Contacts.Fields.Name, Contacts.Fields.Emails], // least-privilege field mask
+    pageSize: 100,
+  });
+  return data.flatMap(c => c.emails?.map(e => e.email) ?? []);
+}
+
+async function addContact() {
+  await Contacts.addContactAsync({
+    [Contacts.Fields.FirstName]: 'Ada',
+    [Contacts.Fields.Emails]: [{ email: 'ada@example.com', label: 'work' }],
+  });
+}
+```
+
+### 19.5 `expo-calendar` — Events & Reminders **[A]**
+
+Useful for "add to calendar" and reminder features. Calendars and reminders are **separate** permissions on iOS, each with its own plist string. Find a writable calendar, then create the event.
+
+```ts
+import * as Calendar from 'expo-calendar';
+
+async function addEvent(title: string, start: Date, end: Date) {
+  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  if (status !== 'granted') return;
+  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+  const writable = calendars.find(c => c.allowsModifications);
+  if (!writable) return;
+  return Calendar.createEventAsync(writable.id, {
+    title,
+    startDate: start,
+    endDate: end,
+    timeZone: 'UTC',
+    alarms: [{ relativeOffset: -30 }], // remind 30 min before
+  });
+}
+```
+
+### 19.6 `expo-device`, `expo-application` & `expo-network` — Identity, Versioning & Connectivity **[I]**
+
+These three need **no permission** and are invaluable for diagnostics, feature gating, and **security risk signals** (see §20). `expo-device` tells you the hardware and whether you're on a real device or a simulator; `expo-application` gives the app version/build and a vendor-scoped install ID; `expo-network` reports connectivity.
+
+```ts
+import * as Device from 'expo-device';
+import * as Application from 'expo-application';
+import * as Network from 'expo-network';
+
+const riskSignal = {
+  model: Device.modelName,                 // "iPhone 16 Pro"
+  os: `${Device.osName} ${Device.osVersion}`,
+  isPhysical: Device.isDevice,             // false in a simulator — a fraud/test signal
+  appVersion: Application.nativeApplicationVersion, // "1.4.2"
+  build: Application.nativeBuildVersion,            // "142"
+};
+
+async function connectivity() {
+  const state = await Network.getNetworkStateAsync();
+  return {
+    online: state.isConnected && state.isInternetReachable,
+    type: state.type, // WIFI | CELLULAR | NONE ...
+  };
+}
+```
+
+**Offline-first implications.** Treat `online === false` as a normal state, not an error: queue mutations locally (e.g. via your data layer's mutation queue or a persisted store), show optimistic UI, and flush when connectivity returns. Combine `Network` with a subscription so a screen reacts the moment the device comes back online rather than failing a request and stranding the user.
+
+### 19.7 `expo-clipboard` — and the Security Caveat **[I]**
+
+Reading and writing the clipboard is trivial; the danger is that **the clipboard is a shared, OS-monitored surface.** Any app — and on iOS, the system itself — can read it, and **iOS shows a paste banner** ("App pasted from Notes") that alarms users if you read the clipboard unprompted.
+
+```ts
+import * as Clipboard from 'expo-clipboard';
+
+await Clipboard.setStringAsync('non-secret value');
+const text = await Clipboard.getStringAsync(); // only on an explicit user "paste" action
+```
+
+> **Security rules (forwarded to §20):** never *auto*-copy secrets (tokens, full card numbers, recovery phrases); if you must copy a one-time code, **clear it after a timeout** (`Clipboard.setStringAsync('')`); never *read* the clipboard except in direct response to a user paste — silent reads trip the iOS paste notification and look like spyware. Persist real secrets in secure storage (§17), never on the clipboard.
+
+### 19.8 Barcode / QR Scanning with `CameraView` **[I]**
+
+The modern scanner lives *inside* `CameraView` (the standalone `expo-barcode-scanner` is retired). Configure the symbologies and handle scans on the camera component directly — this drives payment QR flows, ticket check-in, and onboarding-by-code. It needs the camera permission and generally a **development build** (not Expo Go).
+
+```tsx
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useState } from 'react';
+
+function Scanner({ onCode }: { onCode: (value: string) => void }) {
+  const [permission] = useCameraPermissions();
+  const [locked, setLocked] = useState(false); // debounce duplicate scans
+  if (!permission?.granted) return null;
+  return (
+    <CameraView
+      style={{ flex: 1 }}
+      barcodeScannerSettings={{ barcodeTypes: ['qr', 'ean13', 'code128'] }}
+      onBarcodeScanned={locked ? undefined : ({ data }) => { setLocked(true); onCode(data); }}
+    />
+  );
+}
+```
+
+### 19.9 Screen & System APIs — Brightness, Battery, Orientation, Keep-Awake **[I]**
+
+A cluster of small, permission-free modules that polish UX. `expo-brightness` raises screen brightness for a scan or boarding-pass screen (and restores it after). `expo-battery` reports level/charging state for "low-power" tweaks. `expo-screen-orientation` locks or unlocks rotation per screen (lock the app to portrait but allow a video player to rotate). `expo-keep-awake` prevents the screen from sleeping during a download, a recipe, or a presentation.
+
+```ts
+import * as Brightness from 'expo-brightness';
+import * as Battery from 'expo-battery';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { useKeepAwake } from 'expo-keep-awake';
+
+async function showBoardingPass() {
+  const previous = await Brightness.getBrightnessAsync();
+  await Brightness.setBrightnessAsync(1);            // max for the scanner
+  return () => Brightness.setBrightnessAsync(previous); // restore on unmount
+}
+
+const level = await Battery.getBatteryLevelAsync();    // 0–1
+await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+
+function VideoScreen() {
+  useKeepAwake();           // screen stays on while this component is mounted
+  return null;
+}
+```
+
+> `expo-brightness` does require `WRITE_SETTINGS` on Android (the plugin adds it); the others are permission-free.
+
+### 19.10 Handling "Limited" Photo Access **[A]**
+
+Modern iOS (and Android 14+) lets the user grant access to **specific photos** instead of the whole library. `expo-media-library` surfaces this via an `accessPrivileges` field of `'all' | 'limited' | 'none'`. **Design for `limited` as a first-class state** — don't treat it as denial. Offer a "Select more photos" affordance that re-presents the OS picker so the user can widen the set without going to Settings.
+
+```ts
+import * as MediaLibrary from 'expo-media-library';
+
+const perm = await MediaLibrary.requestPermissionsAsync();
+if (perm.accessPrivileges === 'limited') {
+  // User chose specific photos. Let them add more on demand:
+  await MediaLibrary.presentPermissionsPickerAsync();
+}
+```
+
+### 19.11 `expo-linking` — Deep Links & Universal Links **[I]**
+
+`expo-linking` opens external URLs, deep-links into your own app (`acme://post/42`), and — crucially — opens the OS Settings page that rescues a `canAskAgain: false` permission. Pair it with **universal/app links** (verified `https://` URLs that open your app directly) for the trustworthy, App-Store-preferred experience.
+
+```ts
+import * as Linking from 'expo-linking';
+
+await Linking.openSettings();                   // rescue a permanently-denied permission
+const url = Linking.createURL('post/42');       // -> acme://post/42 (custom scheme)
+Linking.addEventListener('url', ({ url }) => {  // handle an inbound deep link
+  const { path, queryParams } = Linking.parse(url);
+});
+```
+
+> **Security:** deep-link parameters are **untrusted user input** — never use an inbound link to silently perform a privileged action (auto-login, payment, account change) without confirmation. Universal-link verification and the full threat model are covered in §20.
+
+### 19.12 `AppState` — Foreground/Background Transitions **[I]**
+
+`AppState` tells you when the app moves between `active`, `inactive`, and `background`. It is the hook behind the **privacy blur and auto-lock** patterns in §20: blur sensitive screens when the app enters the app-switcher, and require re-authentication (biometrics, §18) on return.
+
+```tsx
+import { AppState, AppStateStatus } from 'react-native';
+import { useEffect, useRef } from 'react';
+
+function useAutoLock(onBackground: () => void, onForeground: () => void) {
+  const prev = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', next => {
+      if (prev.current === 'active' && next.match(/inactive|background/)) onBackground();
+      if (prev.current.match(/inactive|background/) && next === 'active') onForeground();
+      prev.current = next;
+    });
+    return () => sub.remove();
+  }, [onBackground, onForeground]);
+}
+```
+
+### 19.13 `expo-tracking-transparency` (ATT) **[A]**
+
+Before you read the IDFA or do **any cross-app tracking** on iOS, Apple requires you to call the App Tracking Transparency prompt — and you must set `NSUserTrackingUsageDescription`. Without the granted status, the advertising identifier is zeroed out. Request it just-in-time (after a value-explaining screen), not on launch.
+
+```ts
+import { requestTrackingPermissionsAsync, getAdvertisingId } from 'expo-tracking-transparency';
+
+const { granted } = await requestTrackingPermissionsAsync();
+const idfa = granted ? getAdvertisingId() : null; // null/zeros if not granted
+```
+
+### 19.14 Briefly: Print, Sharing & Document Picker **[B]**
+
+Three convenience modules with native-driven UIs and no runtime permission: `expo-print` (render HTML/a view to PDF and hit AirPrint), `expo-sharing` (the native share sheet to hand a file off to another app), and `expo-document-picker` (let the user pick a file from Files/Drive). The system file UIs grant access only to the chosen file, so there's nothing to declare.
+
+```ts
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
+
+const { uri } = await Print.printToFileAsync({ html: '<h1>Invoice</h1>' });
+if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+const picked = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
+```
+
+### 19.15 Best Practices **[I]**
+
+- **Least privilege.** Declare and request the minimum permissions; each extra one enlarges your Data Safety label and invites a rejection. Prefer "add-only" photo and "when-in-use" location over their broader siblings.
+- **Just-in-time + rationale.** Never prompt on launch. Show a short pre-prompt screen explaining the benefit, *then* fire the OS dialog — higher grants and App Store compliance.
+- **Graceful denial paths.** Every permission-gated feature needs a sensible no-permission fallback. Don't dead-end the user; route a permanently-denied permission to `Linking.openSettings()`.
+- **Re-check on focus.** Permissions can be revoked in Settings while you're backgrounded, and Android "allow once" grants expire. Re-read state on screen focus; never cache "granted" indefinitely.
+- **Handle "limited" photo access** as a first-class state with a "select more" affordance — not as denial.
+- **Justify background work for review.** Background location and ATT need a clear, user-visible feature and a written rationale in App Store Connect, or you'll be rejected.
+- **Don't block core flows on optional permissions.** If notifications or contacts are nice-to-have, let the user proceed without them and offer the prompt later from a relevant screen.
+
+> **Permissions & device-API checklist:**
+> - Every requested permission has a matching iOS `NS*UsageDescription` and Android `<uses-permission>` declared via the config plugin in `app.config.ts`, and `npx expo prebuild --clean` has been re-run.
+> - Strings are written for the user (the *why*), and no permission is declared without a real feature behind it.
+> - Each permission is requested just-in-time, behind a rationale screen — never on launch.
+> - `canAskAgain: false` is handled by deep-linking to `Linking.openSettings()`.
+> - Permission state is re-checked on screen focus; "limited" photo access and Android "allow once" are handled, not treated as denial.
+> - Background location / ATT are only requested when a real feature needs them, with a review justification ready.
+> - Clipboard never auto-copies secrets and is cleared after timeout; secrets live in secure storage (§17), not on the clipboard.
+> - Deep-link params are treated as untrusted; `AppState` drives the privacy blur / auto-lock (§18, §20).
+
+---
+
+## 20. Mobile Security Hardening (Banking-Grade)
+
+Everything up to this point made your app *work*. This section makes it *defensible* against a motivated, well-funded attacker — the standard a banking, payments, or healthcare app is held to. The governing reality, which colours every paragraph below, is simple and uncomfortable: **the device is hostile and the client is breakable.** You do not control the phone your code runs on. A determined attacker has root, a debugger, a patched OS, an instrumented runtime (Frida), and unlimited time. So mobile hardening is not about making the client *impenetrable* — that is impossible — it is about **defence in depth**: raising the cost of each attack, detecting compromise to feed risk-scoring, and above all **enforcing every real authorization decision on the server**, where you *do* control the environment. Treat the app as an untrusted UI in front of a trusted backend.
+
+We map each subsection to the **OWASP MASVS** (Mobile Application Security Verification Standard) control groups so a fintech team can audit against an industry framework rather than a personal opinion. The closing checklist gathers it all into a scannable form.
+
+Honesty about Expo up front: a fair amount of banking-grade hardening (root detection, attestation, screenshot-blocking native flags, certificate pinning at the native layer) requires either a **config plugin**, a **prebuild / dev client**, or a **native module**. None of it works in *Expo Go* (Expo Go is for prototyping only — never ship or security-test in it). Where a control needs to leave managed Expo, this section says so explicitly.
+
+### 20.1 The Mobile Threat Model & OWASP MASVS **[A]**
+
+Before writing a single defensive line, write down *who* you are defending against and *what* you are protecting. A bank's threat model is not a blog's. The MASVS organises controls into groups — the ones that matter most here are **MASVS-STORAGE** (data at rest, §17), **MASVS-CRYPTO** (correct key/crypto use), **MASVS-AUTH** (auth & session, §18 + this section), **MASVS-NETWORK** (TLS & pinning), **MASVS-PLATFORM** (IPC, deep links, WebViews, screenshots), **MASVS-CODE** (build hardening, dependencies), and **MASVS-RESILIENCE** (anti-tamper, root/jailbreak, attestation, anti-reverse-engineering). MASTG is the companion *testing guide* that tells a pentester how to break each one — read it as your own red-team checklist.
+
+The single most important principle: **you cannot guarantee anything on a compromised device.** On a rooted phone the attacker can read your "secure" storage, hook your "jailbreak detection" function to return `false`, strip your certificate pinning, and replay your traffic. Therefore client-side controls are **signals and friction**, never the *enforcement boundary*. The enforcement boundary lives on the server (rate limits, fraud scoring, server-verified attestation, transaction signing, idempotency, authorization checks). Design so that even a fully owned client can do *nothing the server would not independently authorize.* See `GO_JWT_ARGON2_GUIDE.md` for how that server-side enforcement (token rotation, reuse detection, Argon2 password hashing, payload encryption) is actually built.
+
+```text
+THREAT MODEL (write your own version of this)
+  Assets:        access/refresh tokens, PII, account balances, payment instruments, session
+  Adversaries:   malware on device, rooted-device fraudster, MITM proxy, repackaged-app phisher,
+                 shoulder-surfer, lost/stolen device holder, malicious 3rd-party SDK
+  Assumption:    attacker may have ROOT + DEBUGGER + FRIDA + patched OS  → client is breakable
+  Strategy:      defence in depth + detect-and-risk-score + ENFORCE ON SERVER
+```
+
+### 20.2 Network Security — TLS & Certificate/Public-Key Pinning **[A]**
+
+**MASVS-NETWORK.** All traffic must be HTTPS over **TLS 1.2 or 1.3** — no cleartext, no exceptions, no "just for this one analytics call." But TLS alone trusts the device's CA store, and that store is the weak point: a corporate MITM proxy, malware, or a mis-issued certificate from a compromised CA can present a *valid* certificate the OS happily accepts, letting an attacker read and modify your API traffic. **Certificate pinning** closes this: the app ships knowing exactly which certificate (or, better, which public key) your API is allowed to present, and refuses any connection that does not match — regardless of what the device CA store says.
+
+Pin to the **public key / SPKI (Subject Public Key Info) hash**, *not* to the leaf certificate. Leaf certs expire and rotate frequently (Let's Encrypt every 90 days; many CAs are moving toward ~47-day lifetimes); the underlying *key pair* can be kept stable across renewals, so SPKI pins survive routine cert rotation. Always ship **at least one backup pin** (a second key you control, kept offline) so you can rotate the primary key without an emergency app release. The operational danger is real and must be respected: **a wrong or stale pin bricks the app for every user** the moment the server cert changes, and you cannot hotfix it for users who can no longer reach your (pinned) update server. Pinning is therefore a *process*, not a config line: stage the next pin in the app *before* you rotate the key on the server.
+
+For full TLS theory (handshake, cipher suites, OCSP, HSTS) defer to `NETWORKING_GUIDE.md`; for terminating TLS and configuring strong ciphers at the edge see `NGINX_GUIDE.md`. In RN/Expo you have a few implementation paths:
+
+```ts
+// pinning.ts — pinning with `react-native-ssl-pinning` (needs a dev client / prebuild;
+// does NOT work in Expo Go). The library swaps fetch for a pinned native networking stack.
+import { fetch as pinnedFetch } from 'react-native-ssl-pinning';
+
+// Compute pins as: openssl x509 -in cert.pem -pubkey -noout |
+//   openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+// Pin the PUBLIC KEY (SPKI), and include a BACKUP pin you control offline.
+const PINS = [
+  'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', // current SPKI
+  'sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=', // backup SPKI (rotation)
+];
+
+export async function securePost(url: string, body: unknown, accessToken: string) {
+  return pinnedFetch(url, {
+    method: 'POST',
+    timeoutInterval: 10_000,
+    sslPinning: { certs: PINS },                 // SPKI pins enforced natively
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,    // short-lived token, §20.7
+    },
+    body: JSON.stringify(body),
+  });
+  // A pin mismatch throws here — treat it as "possible MITM": abort, do NOT retry unpinned.
+}
+```
+
+Alternatively, pin declaratively at the OS layer via an Expo **config plugin** that injects Android Network Security Config and iOS settings — survives reinstalls and applies to *all* native traffic, but still requires prebuild:
+
+```json
+// Android res/xml/network_security_config.xml (injected by a config plugin)
+{
+  "_comment": "conceptual mapping; the plugin writes the real XML",
+  "domain-config": {
+    "domain": "api.yourbank.example",
+    "pin-set": {
+      "expiration": "2026-12-31",
+      "pins": [
+        { "digest": "SHA-256", "value": "AAAA...current" },
+        { "digest": "SHA-256", "value": "BBBB...backup" }
+      ]
+    }
+  }
+}
+```
+
+### 20.3 Secrets in the App — There Are None **[A]**
+
+**MASVS-CODE / MASVS-CRYPTO.** Internalise this as a law of physics: **there are no secrets in a mobile binary.** Anything you ship — API keys, signing secrets, "obfuscated" strings, encryption keys baked into the bundle — is *extractable* by anyone with the IPA/APK and an afternoon. Hermes bytecode and minification slow this down; they do not stop it. A `strings` dump, a Frida hook on your crypto calls, or a proxy on first launch surfaces it.
+
+Practical consequences for a banking app:
+
+- **Never embed private keys or high-privilege secrets** (payment-provider secret keys, admin tokens, master encryption keys, third-party server-side API keys). If leaking it would let an attacker act *as your server*, it does not belong in the app.
+- **Only ship public / publishable keys** — Stripe *publishable* key, public OAuth client IDs, public pinning keys. These are designed to be public.
+- **`EXPO_PUBLIC_` env vars are literally public.** Expo inlines them into the JS bundle at build time. They are a convenience for non-secret config (API base URL, public keys), nothing more. A secret in `EXPO_PUBLIC_STRIPE_SECRET` is a secret in your APK.
+- **Proxy privileged calls through your backend.** The app calls *your* server with the user's session; your server holds the real provider secret and makes the privileged call. This also gives you a single place to enforce authorization and rate limits.
+- **Fetch sensitive runtime config from the server after auth**, scoped to the authenticated user, never bundled.
+
+```ts
+// config.ts
+// OK to inline — these are public by design:
+export const API_BASE = process.env.EXPO_PUBLIC_API_BASE!;          // public URL
+export const STRIPE_PUBLISHABLE = process.env.EXPO_PUBLIC_STRIPE_PK!; // public key
+
+// NOT here, NOT EXPO_PUBLIC_, NOT in the bundle:
+//   - Stripe SECRET key            -> backend only, proxied
+//   - JWT signing secret           -> backend only (see GO_JWT_ARGON2_GUIDE.md)
+//   - DB credentials / 3p secrets  -> backend only
+//   - any key whose leak == game over
+```
+
+### 20.4 Jailbreak / Root / Emulator / Tamper Detection & Attestation **[A]**
+
+**MASVS-RESILIENCE.** A rooted or jailbroken device, an emulator, or a Frida-instrumented runtime are all environments where your client-side defences can be neutralised. You cannot *prevent* them, but you can *detect* them and feed that into server-side **risk scoring** — the same way banks decide whether to allow, step-up-challenge, or soft-block a transaction. The hard rule: **every one of these signals must be verified or consumed server-side; a client that says "I'm not rooted" is untrusted by definition.**
+
+Two tiers exist, and a banking app uses both:
+
+1. **Heuristic detection (cheap, bypassable, still useful):** `jail-monkey` and native checks look for su binaries, writable system paths, suspicious packages (Magisk, Cydia), debugger attachment, hooking frameworks (Frida/Xposed), and emulator fingerprints. An attacker can hook these to lie — so treat a *positive* as high-confidence ("definitely compromised") and a *negative* as merely "no obvious compromise."
+2. **Hardware-backed integrity attestation (strong, the real anti-fraud signal):** **iOS App Attest / DeviceCheck** and **Android Play Integrity API** ask the OS+hardware to produce a cryptographically signed statement that *this is a genuine, unmodified app on a genuine, non-rooted device, installed from the official store*. The token is **verified on your server against Apple/Google**, so a hooked client cannot forge it. This is what actually moves the needle against fraud. In Expo this needs native modules/config plugins (`expo-device` for basic info; App Attest / Play Integrity via community modules or a custom native module + a dev client) — **not available in Expo Go.**
+
+The pattern is **risk-based "soft block / step-up,"** never a hard client-side `if (rooted) crash()` (which is trivially patched and annoys legitimate rooted-but-honest users):
+
+```ts
+// risk.ts — gather client signals, but let the SERVER decide.
+import JailMonkey from 'jail-monkey';
+import * as Device from 'expo-device';
+import { getPlayIntegrityToken, getAppAttestToken } from './nativeAttest'; // native module
+
+export async function buildRiskContext() {
+  const heuristics = {
+    rooted: JailMonkey.isJailBroken(),
+    onExternalStorage: JailMonkey.isOnExternalStorage(),
+    debugged: JailMonkey.isDebuggedMode?.() ?? false,
+    hookDetected: JailMonkey.hookDetected?.() ?? false,
+    isEmulator: !Device.isDevice,           // expo-device: false on simulators/emulators
+  };
+  // Hardware attestation: opaque token, ONLY meaningful after server verification.
+  const attestation = Device.osName === 'iOS'
+    ? await getAppAttestToken()             // Apple App Attest
+    : await getPlayIntegrityToken();        // Android Play Integrity
+  return { heuristics, attestation };
+}
+
+// On a sensitive action, send the context; the server scores it.
+async function transfer(amount: number, to: string, token: string) {
+  const risk = await buildRiskContext();
+  const res = await securePost(`${API_BASE}/transfers`, { amount, to, risk }, token);
+  // Server verifies attestation w/ Apple/Google, combines with heuristics + behavioural
+  // signals, then responds: 200 OK | 401 step-up (re-auth/biometric, §20.7) | 403 soft-block.
+  return res;
+}
+```
+
+```ts
+// SERVER-SIDE (conceptual — see GO_JWT_ARGON2_GUIDE.md for the real Go implementation)
+// 1. Verify Play Integrity / App Attest token signature against Google/Apple.  <-- the real gate
+// 2. Score: failed attestation + rooted + new device + large amount => deny or step-up.
+// 3. NEVER trust risk.heuristics alone; they're advisory. Attestation is the trust anchor.
+```
+
+### 20.5 Anti-Reverse-Engineering **[A]**
+
+**MASVS-RESILIENCE / MASVS-CODE.** Your JS ships as a bundle inside the app; anyone can unzip the IPA/APK and read it. You cannot make it unreadable, but you can make it *expensive* to read and remove easy footholds:
+
+- **Ship Hermes bytecode, not plain JS.** Hermes (the default engine in modern Expo/RN, §1) compiles your JS to bytecode at build time. It is far less legible than minified JS and there is no human-readable source to grep — a meaningful speed bump for casual reversing.
+- **Minify and remove dead code** in production (Metro does this by default for release builds).
+- **Strip source maps from the shipped binary.** Upload them privately to your crash reporter (Sentry/Bugsnag) for symbolication, but **never bundle them** — a source map turns your bytecode back into readable, commented source.
+- **Strip `console.*` and debug logs in production** (e.g. `babel-plugin-transform-remove-console`), both for performance and to avoid leaking internal logic, endpoints, or values.
+- **For high-value targets, add native obfuscation / RASP** (commercial tooling, control-flow obfuscation, string encryption, anti-debug). Know the limit: obfuscation raises cost, it does not provide secrecy or authorization — it buys time, nothing more.
+
+```json
+// app.json (excerpt) — confirm Hermes (default in SDK 54) + production hardening
+{
+  "expo": {
+    "jsEngine": "hermes",
+    "extra": { "router": {} },
+    "_comment": "Release builds: minified + Hermes bytecode; source maps uploaded to Sentry, NOT shipped"
+  }
+}
+```
+
+```bash
+# Verify what actually ships before release (managed Expo / EAS):
+npx expo export --platform android            # inspect dist/ — confirm no .map files leak into the app
+# In babel.config.js (production only): plugins: ['transform-remove-console']
+# Source maps -> Sentry via EAS (sentry-expo / @sentry/react-native upload), kept private.
+```
+
+### 20.6 Screen Privacy — Screenshots, Recording & App-Switcher Blur **[A]**
+
+**MASVS-PLATFORM.** Sensitive screens (balances, statements, card PANs, OTPs) leak through three everyday channels: **screenshots**, **screen recording**, and the **app-switcher thumbnail** the OS captures when you background the app. Banking apps block all three.
+
+- **Block screenshots/recording** with `expo-screen-capture`'s `preventScreenCaptureAsync()`. On **Android** this sets the native `FLAG_SECURE`, which genuinely prevents screenshots, blocks screen recording, and blanks the app-switcher thumbnail — a strong native control. On **iOS** the OS does *not* let apps hard-block screenshots; you instead **detect** screenshots/recording (`addScreenshotListener`, `usePreventScreenCapture`, and `isScreenRecording` / recording listeners) and respond — blur content, warn the user, or revoke the displayed secret.
+- **Background privacy overlay:** when the app is backgrounded or inactive, render an opaque cover so the app-switcher thumbnail (and any screen recording mid-switch) shows nothing sensitive. Drive it off `AppState`.
+
+```tsx
+// SensitiveScreen.tsx — block capture while mounted (Android FLAG_SECURE; iOS detect+blur)
+import { useEffect } from 'react';
+import * as ScreenCapture from 'expo-screen-capture';
+
+export function useCaptureGuard() {
+  // Hook form handles add+remove automatically while this screen is mounted.
+  ScreenCapture.usePreventScreenCapture('sensitive-screen');
+
+  useEffect(() => {
+    // iOS can't hard-block screenshots — detect and react (warn / re-auth / log to risk engine).
+    const sub = ScreenCapture.addScreenshotListener(() => {
+      // e.g. show a warning, scrub the secret from view, raise a security event server-side.
+    });
+    return () => sub.remove();
+  }, []);
+}
+```
+
+```tsx
+// PrivacyOverlay.tsx — cover sensitive content in the app switcher (all platforms)
+import { useEffect, useState } from 'react';
+import { AppState, View, StyleSheet } from 'react-native';
+
+export function PrivacyOverlay({ children }: { children: React.ReactNode }) {
+  const [obscured, setObscured] = useState(false);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      // 'inactive' fires on iOS the instant the switcher animates — cover BEFORE the snapshot.
+      setObscured(s !== 'active');
+    });
+    return () => sub.remove();
+  }, []);
+  return (
+    <View style={{ flex: 1 }}>
+      {children}
+      {obscured && <View style={[StyleSheet.absoluteFill, styles.cover]} />}
+    </View>
+  );
+}
+const styles = StyleSheet.create({ cover: { backgroundColor: '#0B1F3A' } }); // opaque brand cover
+```
+
+### 20.7 Session & Auth Hardening on the Device **[A]**
+
+**MASVS-AUTH.** Session handling is where most "the app got hacked" incidents actually originate. The banking-grade pattern:
+
+- **Short-lived access token in memory only** (minutes-long lifetime). Keep it in a module-scope variable / state, *not* on disk — memory is wiped when the process dies and is far harder to exfiltrate than storage.
+- **Refresh token in biometric-gated SecureStore** (§17 for SecureStore/Keychain/Keystore, §18 for biometrics). Gate retrieval behind Face ID / fingerprint with `requireAuthentication`, so even a stolen unlocked-storage dump is useless without the live biometric.
+- **Rotation & reuse detection on the server.** Each refresh issues a new refresh token and invalidates the old one; if an *old* (already-rotated) refresh token is ever presented, treat it as theft → revoke the whole token family and force re-auth. This is implemented server-side — see `GO_JWT_ARGON2_GUIDE.md` for rotation, reuse detection, and JWT signing.
+- **Inactivity auto-lock:** lock the app (require biometric/PIN) after N minutes idle and on every cold start; never leave an authenticated session resumable indefinitely.
+- **Step-up / re-auth for sensitive operations** (transfers, adding payees, changing limits): demand a fresh biometric or PIN even within an active session.
+- **Logout wipes everything:** clear in-memory tokens, delete SecureStore entries, clear any cached PII (React Query cache, async storage, image cache), and call the server to revoke the session. Handle suspected token theft the same way (server-initiated family revocation).
+
+```ts
+// session.ts — access token in memory, refresh token biometric-gated on disk
+import * as SecureStore from 'expo-secure-store';
+
+let accessToken: string | null = null;            // MEMORY ONLY — never persisted
+export const getAccess = () => accessToken;
+export const setAccess = (t: string | null) => { accessToken = t; };
+
+const REFRESH_KEY = 'refresh_token';
+
+export async function saveRefresh(token: string) {
+  await SecureStore.setItemAsync(REFRESH_KEY, token, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY, // not backed up / migrated
+    requireAuthentication: true,                  // Face ID / fingerprint gate (§18)
+    authenticationPrompt: 'Authenticate to continue',
+  });
+}
+
+export async function getRefresh(): Promise<string | null> {
+  return SecureStore.getItemAsync(REFRESH_KEY, { requireAuthentication: true });
+}
+
+export async function logout(revokeOnServer: (t: string) => Promise<void>) {
+  if (accessToken) { try { await revokeOnServer(accessToken); } catch {} } // tell server to kill session
+  accessToken = null;                              // wipe memory
+  await SecureStore.deleteItemAsync(REFRESH_KEY);  // wipe disk
+  // also: queryClient.clear(); clear image cache; drop any cached PII.
+}
+```
+
+### 20.8 Clipboard, Keyboard & Logging Hygiene **[A]**
+
+**MASVS-STORAGE / MASVS-PLATFORM.** Secrets leak through mundane OS conveniences:
+
+- **Clipboard:** never auto-copy tokens/PANs/OTPs; if a "copy" affordance is genuinely needed, **clear the clipboard after a short timeout** and warn that other apps can read it. The system clipboard is shared and readable by any app (and, on Android, sometimes synced across devices).
+- **Keyboard caching / autofill / autocorrect:** on secret fields (PIN, card number, password, OTP) disable predictive text and the keyboard's learning cache. Set `secureTextEntry`, `autoCorrect={false}`, `autoComplete="off"`, `spellCheck={false}`, `keyboardType` appropriately, and `textContentType="oneTimeCode"` only where you *want* OS OTP autofill.
+- **Third-party keyboards** can keylog. Where the platform allows, prefer the system keyboard for secret entry (iOS lets you decline custom keyboards; on Android, advise users in-app).
+- **Logging & crash reports:** **never log tokens, PII, card data, or request bodies.** Scrub them from crash reports and analytics before they leave the device (Sentry `beforeSend` redaction). Remember §20.5: strip `console.*` in production. A token in a Sentry breadcrumb is a token in a third party's database.
+
+```tsx
+// SecretField.tsx — keyboard hardening for a sensitive input
+import { TextInput } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+
+export const SecretField = (props: React.ComponentProps<typeof TextInput>) => (
+  <TextInput
+    secureTextEntry                 // masks input; opts out of keyboard learning on most OSes
+    autoCorrect={false}             // no predictive-text cache of the secret
+    autoComplete="off"
+    spellCheck={false}
+    importantForAutofill="no"       // Android: keep out of autofill framework
+    textContentType="none"         // iOS: don't offer to save/autofill as a known field
+    {...props}
+  />
+);
+
+// Clipboard with auto-clear (only if copy is truly required):
+export async function copyEphemeral(value: string, ms = 30_000) {
+  await Clipboard.setStringAsync(value);
+  setTimeout(async () => {
+    if ((await Clipboard.getStringAsync()) === value) await Clipboard.setStringAsync('');
+  }, ms);
+}
+```
+
+### 20.9 Deep-Link & Universal-Link Security **[A]**
+
+**MASVS-PLATFORM.** Deep links are an attack surface: any app (or a malicious web page) can fire a link at yours. The rules:
+
+- **Validate and authorize every deep-link action server-side; never perform a privileged action straight from a link.** A link should *navigate*, presenting a screen that then runs the app's normal authenticated, authorized flow — it must not, by itself, transfer money, change a payee, or confirm anything.
+- **Prefer verified App Links (Android) / Universal Links (iOS) over custom schemes.** Custom schemes (`yourbank://`) can be **hijacked** — another app can register the same scheme and intercept the link. Verified links are cryptographically bound to your domain (`assetlinks.json` / `apple-app-site-association`) and cannot be claimed by an impostor.
+- **Link-based auth (magic links / OTP links) must be one-time, short-lived, and bound** to the originating device/session; consume server-side and reject reuse. Never embed long-lived tokens in a link (they leak via history, referrers, and shoulder-surfing).
+- **Guard against link injection / open-redirect:** treat every parameter as hostile, allow-list redirect targets, and never `eval`/route to arbitrary URLs from a link.
+
+```ts
+// linking.ts — sanitize and gate deep links (Expo Router)
+import * as Linking from 'expo-linking';
+
+const ALLOWED = new Set(['account', 'statements', 'payee']); // navigation targets only
+
+export function handleDeepLink(url: string, isAuthenticated: boolean, navigate: (p: string) => void) {
+  const { hostname, path, queryParams } = Linking.parse(url);
+  const target = (path ?? '').split('/')[0];
+  if (!ALLOWED.has(target)) return;               // reject unknown / injected routes
+
+  // Privileged intents NEVER auto-execute. They route into the normal authed+authorized flow,
+  // which re-verifies on the server and may demand step-up (§20.7).
+  if (!isAuthenticated) { navigate(`/login?next=${encodeURIComponent(target)}`); return; }
+  navigate(`/${target}`);                          // params re-validated server-side on the screen
+}
+```
+
+### 20.10 Supply Chain & Runtime Integrity **[A]**
+
+**MASVS-CODE / MASVS-RESILIENCE.** Your app is only as trustworthy as everything it pulls in and everything it can be updated with:
+
+- **Pin and audit dependencies.** Lockfile committed, `npm audit` / a tool like Socket in CI, watch for typosquats and compromised packages. A malicious transitive dependency runs with your app's full privileges and can exfiltrate tokens. Minimise third-party SDKs in a banking app — every SDK is code you didn't write running next to your secrets.
+- **Sign and verify OTA updates.** Expo **EAS Update** can be hijacked if unsigned: an attacker who can MITM or compromise the update channel could push malicious JS to every user. Enable **EAS Update code signing** so the client verifies the update bundle's signature against a key you control, and refuses unsigned/tampered updates. Combine with §20.2 pinning so the update channel itself is MITM-resistant. (See §14 for EAS Build/Update mechanics and shipping.)
+- **Code-sign the binaries** (iOS provisioning/notarization, Android signing key in a secure keystore / EAS-managed credentials) and protect the signing keys — a leaked signing key lets an attacker ship a *trusted* malicious update.
+- **All real authorization happens on the server.** This is the thread that ties the whole section together: pinning, attestation, risk scores, and tamper checks are *inputs* to a server decision. The server independently authorizes every transaction, re-checks limits and ownership, enforces idempotency, and treats the client as an untrusted petitioner. Build that side per `GO_JWT_ARGON2_GUIDE.md`.
+
+```json
+// app.json (excerpt) — EAS Update code signing so OTA can't be hijacked
+{
+  "expo": {
+    "updates": {
+      "url": "https://u.expo.dev/your-project-id",
+      "codeSigningCertificate": "./code-signing/certificate.pem",
+      "codeSigningMetadata": { "keyid": "main", "alg": "rsa-v1_5-sha256" }
+    },
+    "runtimeVersion": { "policy": "appVersion" }
+  }
+}
+```
+
+```bash
+# Generate signing material and configure EAS Update signing (one-time):
+npx eas-cli codesigning:configure        # creates key + cert, wires app.json
+npm audit --omit=dev                     # audit production deps in CI; fail the build on highs
+```
+
+> **Banking-grade mobile security checklist:**
+> *Map each item to its OWASP MASVS group; a fintech team should be able to mark every line ✅/❌/N-A.*
+>
+> **MASVS-RESILIENCE — threat model & anti-tamper**
+> - [ ] Written threat model: assets, adversaries, "attacker has root + debugger + Frida" assumption documented.
+> - [ ] Root/jailbreak detection (`jail-monkey` + native) feeding risk scoring — never a hard client-side crash.
+> - [ ] Debugger / Frida / Xposed / hooking detection wired into risk context.
+> - [ ] Emulator detection (`expo-device`).
+> - [ ] Hardware attestation: **iOS App Attest/DeviceCheck** + **Android Play Integrity**, **verified server-side** (the real trust anchor; needs dev client, not Expo Go).
+> - [ ] "Soft block / step-up on risk" pattern — server decides allow / step-up / deny.
+>
+> **MASVS-NETWORK — transport**
+> - [ ] HTTPS everywhere, TLS 1.2/1.3 only, no cleartext (verify `NETWORKING_GUIDE.md` / `NGINX_GUIDE.md`).
+> - [ ] Certificate/**public-key (SPKI)** pinning, with ≥1 offline backup pin and a documented rotation runbook.
+> - [ ] Pin rollout precedes server key rotation (no app-bricking).
+>
+> **MASVS-CODE / MASVS-CRYPTO — secrets & build**
+> - [ ] No private/high-privilege secrets in the binary; privileged calls proxied through the backend.
+> - [ ] Only public/publishable keys shipped; `EXPO_PUBLIC_` used only for non-secret config.
+> - [ ] Sensitive runtime config fetched server-side after auth, scoped to the user.
+> - [ ] Hermes bytecode enabled; release minified; **source maps stripped from the app** (uploaded privately to crash tooling).
+> - [ ] `console.*` / debug logs removed in production; native obfuscation/RASP for high-value targets.
+> - [ ] Dependencies pinned + audited (CI), third-party SDK surface minimised.
+>
+> **MASVS-AUTH — session**
+> - [ ] Access token in memory only, short-lived; refresh token in **biometric-gated SecureStore** (§17/§18).
+> - [ ] Server-side refresh-token rotation + reuse detection (family revocation) — see `GO_JWT_ARGON2_GUIDE.md`.
+> - [ ] Inactivity auto-lock + lock on cold start; step-up/re-auth for sensitive ops.
+> - [ ] Logout wipes memory + SecureStore + cached PII and revokes the session server-side.
+>
+> **MASVS-PLATFORM — platform interaction**
+> - [ ] Screenshot/recording blocked (Android `FLAG_SECURE` via `expo-screen-capture`; iOS detect + blur).
+> - [ ] App-switcher / background privacy overlay (`AppState` → opaque cover before the OS snapshot).
+> - [ ] Deep links validated/authorized; no privileged action straight from a link.
+> - [ ] Verified App Links / Universal Links instead of hijackable custom schemes; link-auth one-time, short-lived, device-bound.
+> - [ ] Clipboard never holds secrets (auto-clear if unavoidable); keyboard caching/autofill disabled on secret fields; third-party keyboards discouraged on secret entry.
+> - [ ] No PII/tokens in logs, analytics, or crash reports (scrub before send).
+>
+> **MASVS-RESILIENCE — update integrity**
+> - [ ] EAS Update **code signing** enabled; client rejects unsigned/tampered OTA bundles (§14).
+> - [ ] Binaries code-signed; signing keys protected (EAS-managed credentials / secure keystore).
+>
+> **The overriding rule**
+> - [ ] **Every real authorization decision is enforced on the server.** Assume the client is fully compromised and confirm the app still cannot do anything the server wouldn't independently authorize.
+
+---
+
+## 21. Production Release: App Store & Play Store
+
+Shipping a banking-grade React Native + Expo app is mostly a *compliance and process* exercise, not a coding one. The build mechanics — `eas.json`, EAS Build/Submit/Update — are covered in §14; this section assumes you can produce binaries and focuses on what the **stores** demand: identifiers and signing, privacy declarations that must match reality, listing assets, the extra scrutiny fintech apps attract, and a safe rollout/rollback strategy. Get any of the privacy or signing pieces wrong and you do not ship — Apple and Google reject before users ever see the app.
+
+Treat this as a checklist-driven chapter. Read it alongside §19 (permission/privacy *strings*), §17 (secure storage of tokens/keys), and §20 (runtime security hardening) — the store reviewers will probe exactly those areas in a banking app.
+
+### 21.1 Structuring an app for production (dev / staging / prod) **[A]**
+
+A production app is never one monolith. You want **three logical environments** — development, staging, and production — that can be built independently and, ideally, installed *side by side* on a tester's device. The cleanest pattern in Expo is a dynamic `app.config.ts` that reads a single environment variable (set per EAS build profile) and derives the bundle identifier, app name, icon, and API base URL from it.
+
+Non-secret runtime config travels as `EXPO_PUBLIC_*` env vars (inlined into the JS bundle — never put secrets here). Real secrets (signing material is handled by EAS itself; API server secrets stay server-side) use **EAS secrets** / environment variables on the build, read at build time. See §14 for how profiles and secrets are wired into `eas.json`.
+
+```ts
+// app.config.ts — one config, three environments
+import { ExpoConfig, ConfigContext } from 'expo/config';
+
+const ENV = process.env.APP_ENV ?? 'development'; // set per EAS build profile
+
+const variants = {
+  development: { suffix: '.dev',     name: 'Acme Bank (Dev)',     scheme: 'acmebank-dev' },
+  staging:     { suffix: '.staging', name: 'Acme Bank (Staging)', scheme: 'acmebank-stg' },
+  production:  { suffix: '',         name: 'Acme Bank',           scheme: 'acmebank' },
+} as const;
+
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const v = variants[ENV as keyof typeof variants];
+  return {
+    ...config,
+    name: v.name,
+    slug: 'acme-bank',
+    scheme: v.scheme,
+    ios:     { bundleIdentifier: `com.acme.bank${v.suffix}` },
+    android: { package:          `com.acme.bank${v.suffix}` },
+    extra: {
+      env: ENV,
+      apiUrl: process.env.EXPO_PUBLIC_API_URL, // public, build-time
+      eas: { projectId: '...' },
+    },
+  };
+};
+```
+
+Distinct bundle IDs / packages per variant are what let a tester keep **staging and prod installed at once** — the OS keys apps by identifier, so `com.acme.bank.staging` and `com.acme.bank` are different apps. Give each variant its own icon tint so nobody demos the wrong build to a reviewer.
+
+**Versioning** is the part people get wrong. There are two numbers and they mean different things:
+
+| Field | iOS | Android | Visible to user? | Must increase per upload? |
+|---|---|---|---|---|
+| Marketing version | `version` (e.g. `2.4.0`) | `version` → `versionName` | Yes | No (can resubmit same `2.4.0`) |
+| Build number | `buildNumber` | `versionCode` (integer) | No | **Yes** — every store upload must be higher |
+
+The cleanest approach is to let EAS own the build counter. Set `"appVersionSource": "remote"` and `"autoIncrement": true` in the relevant build profile so EAS tracks and bumps `buildNumber`/`versionCode` server-side — no more "build already exists" rejections from forgetting to increment (mechanics in §14). Bump the marketing `version` by hand per release using semver.
+
+```jsonc
+// eas.json (excerpt) — remote version management; full file in §14
+{
+  "cli": { "appVersionSource": "remote" },
+  "build": {
+    "production": { "autoIncrement": true, "channel": "production" },
+    "staging":    { "autoIncrement": true, "channel": "staging",
+                    "env": { "APP_ENV": "staging" } }
+  }
+}
+```
+
+Other production-structure notes:
+
+- **Release branching:** cut a `release/2.4.0` branch, build staging from it, fix forward, then tag and build production from the same commit. Keep `main` deployable.
+- **Feature flags:** ship risky features dark and toggle server-side (e.g. LaunchDarkly / your own config endpoint). Lets you disable a broken feature without a store resubmit and lets reviewers see a stable surface.
+- **Monorepo:** Expo supports monorepos; pin the app to a workspace, ensure Metro `watchFolders` and hoisting are configured, and keep one EAS project per app. Build profiles still drive the env.
+
+### 21.2 iOS code signing & identifiers **[A]**
+
+iOS signing is a chain: an **Apple Developer Program** membership ($99/yr, organization enrollment with a D-U-N-S number for a bank) → an **App ID / bundle identifier** registered in the developer portal → **capabilities/entitlements** enabled on that App ID → a **distribution certificate** (proves who you are) → a **provisioning profile** (binds certificate + App ID + entitlements). The signed binary must match all of these or App Store Connect rejects it at upload.
+
+For a banking app you typically enable these capabilities/entitlements — each must be declared on the App ID *and* in the entitlements file:
+
+| Capability / entitlement | Why a banking app needs it |
+|---|---|
+| Push Notifications | Transaction alerts, OTP/step-up prompts |
+| Associated Domains | Universal Links + **passkey / WebAuthn** domain association (`webcredentials:`) |
+| App Attest (DeviceCheck) | Attest the app is genuine/unmodified before trusting a device (anti-fraud) |
+| Keychain Sharing | Share credentials/tokens across an app group if you have an extension |
+| Sign in with Apple | Mandatory if you offer third-party social login (see §21.4) |
+| Face ID usage | Biometric unlock (`NSFaceIDUsageDescription` string — §19) |
+
+**EAS-managed signing vs manual.** By default `eas build` *manages signing for you*: it can create the distribution certificate and provisioning profile in your Apple account and store them securely, regenerating profiles when capabilities change. This is the recommended path. Banks with a security team that insists on holding their own certificates can instead use **local credentials** (`credentials.json`) and supply the `.p12` + `.mobileprovision`; you then own renewal. Manage either way with `eas credentials`. Whatever you choose, the **distribution certificate is shared infrastructure** — store it in a vault, not on one engineer's laptop.
+
+**App Store Connect flow:** create the *app record* (matching the bundle ID), upload the build (EAS Submit, §14), wait for **build processing** (minutes to ~an hour), then distribute via **TestFlight** before App Store review:
+
+| TestFlight track | Audience | Review needed? | Use for a bank |
+|---|---|---|---|
+| Internal testing | Up to 100 team members (App Store Connect users) | No | Daily QA, security team, demo prep |
+| External testing | Up to 10,000 invited/public testers | **Yes** — a lighter Beta App Review | UAT, pilot customers, beta cohort |
+
+### 21.3 Android signing & build format **[A]**
+
+Android's modern signing model is **Google Play App Signing**, and you should opt in. You generate an **upload key**; Google holds the real **app signing key** and re-signs your uploads for distribution. The win: if your upload key is ever lost or compromised you can rotate it with Google's help, and you never risk the master signing identity that users' devices trust. EAS generates and manages the upload keystore for you (or you can supply your own via `eas credentials`); back up the keystore credentials in your vault regardless.
+
+```bash
+# Build a Play-ready AAB (Submit/credentials mechanics in §14)
+eas build --platform android --profile production   # produces an .aab
+```
+
+Key Android facts for production:
+
+- **Ship an AAB, not an APK.** The Play Store requires the **Android App Bundle** (`.aab`); Google generates per-device optimized APKs from it. Build APKs only for sideloaded internal QA.
+- **`versionCode`** is an integer that must strictly increase on every upload — let EAS `autoIncrement` it (§21.1).
+- **Target API level:** as of 2026, new apps and updates must target **API level 35 (Android 15)** or the console blocks the upload. Expo SDK 54 targets this by default.
+
+Play testing tracks mirror TestFlight but are percentage-based:
+
+| Track | Audience | Notes |
+|---|---|---|
+| Internal testing | Up to 100 testers, fast (~minutes) | Day-to-day QA |
+| Closed testing | Named lists / Google Groups | UAT, pilot; **required** to graduate a brand-new personal-account app |
+| Open testing | Public opt-in beta | Wider beta before production |
+| Production | Everyone, supports **staged % rollout** | See §21.8 |
+
+### 21.4 iOS privacy & review compliance (critical in 2026) **[A]**
+
+This is where banking apps get rejected. Apple enforces several privacy mechanisms; **declarations must match what the app actually does**, and several are hard requirements.
+
+- **Privacy Manifest (`PrivacyInfo.xcprivacy`)** — *mandatory*. An XML file declaring (a) every category of data your app and its SDKs collect, and (b) every **"required-reason API"** you call (e.g. `UserDefaults`, file timestamps, disk space, system boot time) with an approved reason code. Apple now **rejects** apps missing or mis-declaring this. Expo SDK 54 auto-generates a baseline manifest and many config plugins contribute their entries; you must still audit it and add reasons for any custom native code. Third-party SDKs that traffic in financial data must also ship their own manifest.
+
+```xml
+<!-- PrivacyInfo.xcprivacy (excerpt) — Expo generates a base; audit & extend -->
+<dict>
+  <key>NSPrivacyTracking</key><false/>
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypePaymentInfo</string>
+      <key>NSPrivacyCollectedDataTypeLinkedToUser</key><true/>
+      <key>NSPrivacyCollectedDataTypeUsedForTracking</key><false/>
+    </dict>
+  </array>
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array><string>CA92.1</string></array> <!-- app's own storage -->
+    </dict>
+  </array>
+</dict>
+```
+
+- **App Privacy "Nutrition Labels"** — a questionnaire in App Store Connect that produces the public privacy summary on your store page. Must agree with the Privacy Manifest and the Data Safety form (§21.5). A bank declares Financial Info, Contact Info, Identifiers, etc., and whether each is linked to the user / used for tracking.
+- **App Tracking Transparency (ATT):** if you track users across other apps/sites (advertising attribution), you must call `requestTrackingAuthorization` and show the prompt with `NSUserTrackingUsageDescription` (§19). Most banks should simply **not track** and declare so — fewer rejections, cleaner labels.
+- **Sign in with Apple:** if your app offers any third-party/social login (Google, Facebook), you **must** also offer Sign in with Apple. A bank-issued-credentials-only login is exempt; the moment you add social login, add Apple.
+- **In-app account deletion:** if users can create an account, the app must let them **initiate deletion from within the app** (not just a web/support route). For regulated finance you may *retain* records for legal reasons — that's fine, but the user-facing deletion request flow must exist in-app.
+- **Export compliance (`ITSAppUsesNonExemptEncryption`):** every banking app uses encryption (HTTPS, keychain). Standard/exempt cryptography qualifies for the simplified exemption — set the flag so you skip the upload-time question every build:
+
+```jsonc
+// app.config.ts → ios.infoPlist  (declares standard-crypto exemption)
+"ios": {
+  "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+}
+```
+Use `false` only if you rely solely on standard/exempt encryption; proprietary crypto requires a French export declaration and self-classification (CCATS), so confirm with legal.
+
+### 21.5 Android privacy & policy compliance **[A]**
+
+- **Data Safety form** (Play Console) — Android's analogue to Apple's labels. You declare what data is **collected** vs **shared**, whether it's encrypted in transit, and whether users can request deletion. It must match the app's real behavior and your privacy policy; mismatches are a top rejection/enforcement cause.
+- **Target API level:** must target **API 35** (§21.3) or the upload is blocked.
+- **Sensitive-permission justification:** permissions like background location, SMS/Call Log, `QUERY_ALL_PACKAGES`, or `MANAGE_EXTERNAL_STORAGE` require a written, in-console justification and often a demo video. A bank rarely needs these — request only what you use (§19) and remove permissions pulled in transitively by SDKs.
+- **Financial-services policy:** Google has a dedicated financial-products policy. Personal-loan/credit apps face extra disclosure rules; crypto, lending, and "regulated financial products" may require regional **declarations and proof of licensing** in the console.
+- **In-app account deletion** + a deletion-request URL: Play also requires an account/data deletion path, including one reachable **outside** the app.
+- **Families policy:** only relevant if your app targets children — almost never for a bank; do not opt into the Designed for Families program.
+
+### 21.6 Store listing & assets **[I]**
+
+Both stores block submission until the listing metadata is complete. Prepare these up front; localized variants multiply the work.
+
+| Asset / field | iOS (App Store Connect) | Android (Play Console) |
+|---|---|---|
+| App icon | 1024×1024 (no alpha) | 512×512 + adaptive icon in build |
+| Screenshots | Per device class: 6.9"/6.5" iPhone, 13" iPad if supported | Phone + 7"/10" tablet; 2–8 each |
+| Promo media | App Preview video (optional) | Feature graphic 1024×500 (required), video optional |
+| Text | Name, subtitle, description, **keywords** (100 chars), promo text | Title (30), short desc (80), full desc (4000) |
+| **Privacy policy URL** | **Required** | **Required** |
+| Support URL / contact | Required | Email required, website optional |
+| Age rating | Apple questionnaire | IARC questionnaire |
+| Category | Finance | Finance |
+
+Localization: at minimum localize the listing for each market you operate in; regulators may require local-language disclosures. Keep screenshots free of real customer data — use seeded demo data.
+
+### 21.7 Banking / fintech-specific review notes **[A]**
+
+Finance apps get **manual, heightened scrutiny** on both stores. Plan for a slower, pickier review.
+
+- **Provide a reviewer demo account.** Apple's App Review and Google's reviewers cannot pass your KYC/2FA, so give working test credentials (and any OTP bypass for the demo account) in the review notes. Missing/blocked demo access is the #1 banking-app rejection. If you use App Attest/Play Integrity, ensure the demo device/build passes.
+- **Justify data handling clearly.** Explain in review notes why you collect financial data and how it's secured (TLS, keychain/Keystore via §17, no plaintext logging via §20). Reviewers may ask.
+- **No misleading financial claims.** Avoid guaranteed returns, unverifiable "FDIC/regulator-backed" wording, or implying you're a bank if you're a fintech front-end. Show required disclosures/disclaimers.
+- **Regional licensing.** Some regions require proof you're authorized to offer financial services; both consoles have fields/processes for this. Engage compliance early — these can add weeks.
+- **Common rejection reasons & avoidance:**
+
+| Rejection reason | How to avoid |
+|---|---|
+| Reviewer can't log in | Supply demo account + OTP path in notes |
+| Privacy labels ≠ Data Safety ≠ manifest | Single source of truth; reconcile all three |
+| Missing in-app account deletion | Build the in-app deletion flow (§21.4/21.5) |
+| Social login without Sign in with Apple | Add Sign in with Apple |
+| Undeclared/over-broad permissions | Request minimum; justify sensitive ones |
+| Misleading financial claims | Legal review of all copy |
+| Crash on reviewer device/region | Test on real devices, multiple locales/timezones |
+
+### 21.8 Release process, OTA updates & post-launch **[A]**
+
+Promote builds through a funnel, never straight to 100%:
+
+1. **Internal/TestFlight + Play internal** → QA, security, demo rehearsal.
+2. **External beta / closed track** → UAT and a pilot cohort.
+3. **Submit to review** with reviewer notes + demo account (§21.7).
+4. **Staged/phased rollout** to production (below).
+5. **Monitor**, then ramp to 100% or halt.
+
+**Staged rollout** is your safety valve and differs per platform:
+
+| Aspect | iOS (Phased Release) | Android (Staged Rollout) |
+|---|---|---|
+| Granularity | Fixed 7-day curve (1→2→5→10→20→50→100%) | You choose % (e.g. 1/5/10/20/50/100) |
+| Pause | Yes | Yes |
+| **Halt + fix** | Can pause; can't reduce % already served | Can **halt** rollout at current % |
+| Trigger | Auto over 7 days | Manual or rules |
+
+**EAS Update (OTA) vs store resubmit.** This is the most important post-launch lever. EAS Update (§14) ships **JS/asset-only** changes over the air to a channel — instant hotfixes for bugs or content with no review wait. But anything touching **native code** requires a fresh store build and review:
+
+| Change type | Ship via EAS Update (OTA)? | Resubmit to stores? |
+|---|---|---|
+| JS bug fix, copy/UI tweak, config | Yes | No |
+| New JS feature (no native deps) | Yes | No |
+| Add/upgrade a native module, new permission/entitlement | No | **Yes** |
+| SDK upgrade / changed app.config native fields | No | **Yes** |
+| `runtimeVersion` change | No (incompatible) | **Yes** |
+
+OTA payloads only apply when the **`runtimeVersion` matches** the installed binary — that's the guardrail preventing JS that needs new native code from reaching an old binary. For a bank, gate sensitive OTA hotfixes and keep them auditable; never push unreviewed code that changes money movement without your normal change control.
+
+**Rollback strategy:**
+- *OTA:* `eas update --branch production` republishing the previous known-good update, or roll back the channel pointer — users recover on next launch.
+- *Native:* you cannot un-ship a binary. **Halt the Android staged rollout** and/or pause iOS phased release the moment crash-free rate dips, then submit a fixed build. This is why you stage.
+
+**Monitoring & post-launch:**
+- Track **crash-free users/sessions** (Sentry/Crashlytics) and **adoption** per version; halt if a new version regresses.
+- Watch auth-success and transaction-success rates per build — for a bank these matter more than generic crash metrics.
+- After full rollout, bump the marketing `version` for the next cycle (build numbers auto-increment, §21.1), and keep the release branch tagged for hotfix forks.
+- **Handling rejections:** read the resolution center message, fix or clarify in the reply, and resubmit; for policy disputes use Apple's App Review Board / Google's appeal flow with evidence.
+
+> **Production release checklist (iOS + Android):**
+> **Structure & versioning** — [ ] dev/staging/prod via `app.config.ts` + EAS profiles; [ ] distinct bundle IDs/packages per variant (staging installable beside prod); [ ] `appVersionSource: remote` + `autoIncrement`; [ ] marketing `version` bumped; [ ] release branch tagged; [ ] secrets via EAS, not `EXPO_PUBLIC_*`.
+> **iOS signing** — [ ] Apple Developer org enrolled; [ ] App ID + capabilities (push, associated domains/passkeys, App Attest, Sign in with Apple if social); [ ] EAS-managed (or vaulted manual) distribution cert + profile; [ ] App Store Connect record; [ ] TestFlight tested.
+> **Android signing** — [ ] Google Play App Signing enrolled; [ ] upload keystore vaulted; [ ] **AAB** built; [ ] target **API 35**; [ ] internal/closed track tested.
+> **iOS compliance** — [ ] `PrivacyInfo.xcprivacy` audited (data types + required-reason APIs); [ ] App Privacy labels filled; [ ] ATT handled or "no tracking" declared; [ ] Sign in with Apple if applicable; [ ] in-app account deletion; [ ] `ITSAppUsesNonExemptEncryption=false` (standard crypto).
+> **Android compliance** — [ ] Data Safety form matches reality + privacy policy; [ ] sensitive permissions justified; [ ] financial-products policy/licensing declared; [ ] in-app + external account deletion.
+> **Listing** — [ ] icon, screenshots per device size, feature graphic (Android); [ ] description/keywords; [ ] **privacy-policy URL**; [ ] support URL; [ ] age rating; [ ] Finance category; [ ] localized where required; [ ] no real customer data in assets.
+> **Fintech review** — [ ] reviewer demo account + OTP path in notes; [ ] data-handling explanation; [ ] no misleading financial claims; [ ] regional licensing evidence; [ ] App Attest/Play Integrity passes for the demo build.
+> **Rollout & post-launch** — [ ] phased (iOS) / staged % (Android) rollout; [ ] crash-free + auth/txn success monitored; [ ] OTA (§14) reserved for JS-only fixes with `runtimeVersion` match; [ ] native fixes require resubmit; [ ] rollback plan (republish OTA / halt staged rollout) documented.
+
+---
+
+## 22. Tips, Tricks & Gotchas
 
 ### 17.1 Platform Differences: iOS vs Android **[I]**
 
@@ -2641,7 +4263,7 @@ type ListItem = { id: string; name: string };
 
 ---
 
-## 18. Study Path & Build-to-Learn Projects
+## 23. Study Path & Build-to-Learn Projects
 
 An ordered path from zero to shipping a real app. The best learning is *building* — each stage ends with a concrete project.
 
