@@ -6,7 +6,7 @@
 >
 > **This guide's place in the library:** It is the single deep reference for building a *production* Gin backend. It folds in the previous file-upload material and cross-references the companion guides where they go deeper:
 > - `GO_LANG_AND_PATTERNS_GUIDE.md` — the Go language itself and the design patterns (clean architecture, repository, DI, factory, adapter, functional options) we *apply* here.
-> - `JWT_AUTH_ARGON2_GUIDE.md` — token and password-hashing internals.
+> - `GO_JWT_ARGON2_GUIDE.md` — token and password-hashing internals.
 > - `POSTGRESQL_GUIDE.md` / `RELATIONAL_DB_DESIGN_GUIDE.md` — SQL and schema design.
 > - `REDIS_GUIDE.md`, `DOCKER_GUIDE.md`, `GO_FILESYSTEM_OS_CLI_GUIDE.md` — caching, deployment, and file/OS plumbing.
 
@@ -26,16 +26,17 @@
 10. [Middleware In Depth](#10-middleware-in-depth) **[I/A]**
 11. [Authentication & Authorization](#11-authentication--authorization) **[A]**
 12. [Database Layer](#12-database-layer) **[A]**
-13. [Configuration & Secrets](#13-configuration--secrets) **[I/A]**
-14. [Observability](#14-observability) **[A]**
-15. [Centralized Error Handling](#15-centralized-error-handling) **[A]**
-16. [Performance & Scale](#16-performance--scale) **[A]**
-17. [Security Hardening](#17-security-hardening) **[A]**
-18. [Testing](#18-testing) **[I/A]**
-19. [Deployment](#19-deployment) **[A]**
-20. [Complete Worked Example: Users + Orders API](#20-complete-worked-example-users--orders-api) **[A]**
-21. [Gotchas & Best Practices](#21-gotchas--best-practices) **[A]**
-22. [Study Path & Build-to-Learn Projects](#22-study-path--build-to-learn-projects)
+13. [Realtime Updates with WebSockets](#13-realtime-updates-with-websockets) **[A]**
+14. [Configuration & Secrets](#14-configuration--secrets) **[I/A]**
+15. [Observability](#15-observability) **[A]**
+16. [Centralized Error Handling](#16-centralized-error-handling) **[A]**
+17. [Performance & Scale](#17-performance--scale) **[A]**
+18. [Security Hardening](#18-security-hardening) **[A]**
+19. [Testing](#19-testing) **[I/A]**
+20. [Deployment](#20-deployment) **[A]**
+21. [Complete Worked Example: Users + Orders API](#21-complete-worked-example-users--orders-api) **[A]**
+22. [Gotchas & Best Practices](#22-gotchas--best-practices) **[A]**
+23. [Study Path & Build-to-Learn Projects](#23-study-path--build-to-learn-projects)
 
 ---
 
@@ -131,7 +132,7 @@ func main() {
 	// ── Option B: gin.New() — bare; you choose middleware (production) ───────────
 	r := gin.New()
 	r.Use(gin.Recovery()) // ALWAYS add Recovery in production — never skip it.
-	// r.Use(myStructuredLogger())   // your own slog/zap logger (see §14)
+	// r.Use(myStructuredLogger())   // your own slog/zap logger (see §15)
 
 	r.GET("/ping", func(c *gin.Context) {
 		// c.JSON sets Content-Type: application/json and serialises the map.
@@ -139,7 +140,7 @@ func main() {
 	})
 
 	// r.Run is a convenience wrapper over http.ListenAndServe. For production,
-	// build your own http.Server so you can set timeouts + graceful shutdown (§16).
+	// build your own http.Server so you can set timeouts + graceful shutdown (§17).
 	if err := r.Run(":8080"); err != nil {
 		panic(err)
 	}
@@ -166,27 +167,27 @@ gin.SetMode(gin.TestMode)    // tests: suppresses output
 // Or via environment, no code change:  GIN_MODE=release ./my-api
 ```
 
-> **Best practice:** Drive the mode from config (§13), defaulting to release in deployed environments. Leaving an API in debug mode in production leaks route information and prints noisy logs.
+> **Best practice:** Drive the mode from config (§14), defaulting to release in deployed environments. Leaving an API in debug mode in production leaks route information and prints noisy logs.
 
 ### 2.4 A production-grade server skeleton (preview) **[I]**
 
-`r.Run()` is fine for learning, but it gives you *no timeouts* and *no graceful shutdown*. A real server wraps the engine in an `http.Server` you control. We build this fully in §16; here's the shape so you start with the right habit:
+`r.Run()` is fine for learning, but it gives you *no timeouts* and *no graceful shutdown*. A real server wraps the engine in an `http.Server` you control. We build this fully in §17; here's the shape so you start with the right habit:
 
 ```go
 srv := &http.Server{
 	Addr:              ":8080",
 	Handler:           r,                // the gin.Engine is an http.Handler
-	ReadHeaderTimeout: 5 * time.Second,  // defend against Slowloris (§17)
+	ReadHeaderTimeout: 5 * time.Second,  // defend against Slowloris (§18)
 	ReadTimeout:       15 * time.Second,
 	WriteTimeout:      15 * time.Second,
 	IdleTimeout:       60 * time.Second,
 }
-// go srv.ListenAndServe()  ... then graceful shutdown on SIGINT/SIGTERM (§16.1)
+// go srv.ListenAndServe()  ... then graceful shutdown on SIGINT/SIGTERM (§17.1)
 ```
 
 ### 2.5 Live reload in development with Air **[B]**
 
-Go is compiled, so by default every code change means stopping the process, re-running `go build`/`go run`, and restarting by hand. During active development that loop gets tedious fast. **[Air](https://github.com/air-verse/air)** is the de-facto live-reload tool for Go web servers: it watches your source tree, and on any change it automatically rebuilds the binary and restarts it. You edit a handler, save, and within a second the new code is serving — the same feel as `nodemon` in Node or the Flask/Django auto-reloader in Python. **Use Air for local development only; never in production** (production runs the compiled binary directly behind graceful shutdown — §16/§19).
+Go is compiled, so by default every code change means stopping the process, re-running `go build`/`go run`, and restarting by hand. During active development that loop gets tedious fast. **[Air](https://github.com/air-verse/air)** is the de-facto live-reload tool for Go web servers: it watches your source tree, and on any change it automatically rebuilds the binary and restarts it. You edit a handler, save, and within a second the new code is serving — the same feel as `nodemon` in Node or the Flask/Django auto-reloader in Python. **Use Air for local development only; never in production** (production runs the compiled binary directly behind graceful shutdown — §17/§20).
 
 > **⚡ Note on the module path:** Air moved to the `air-verse` org. The current install path is `github.com/air-verse/air`. The old `github.com/cosmtrek/air` path still appears in older tutorials but is deprecated — prefer the new one.
 
@@ -252,7 +253,7 @@ air
 **Best practices and gotchas:**
 
 - **Add `tmp/` to `.gitignore`** — it holds throwaway build artifacts.
-- **Graceful shutdown still matters.** Air sends an interrupt to restart your process; if your server has graceful-shutdown wiring (§16.1) it drains cleanly between reloads and avoids "address already in use" on the next start. If you still see port-in-use errors, raise `kill_delay` so the old process fully releases the port first.
+- **Graceful shutdown still matters.** Air sends an interrupt to restart your process; if your server has graceful-shutdown wiring (§17.1) it drains cleanly between reloads and avoids "address already in use" on the next start. If you still see port-in-use errors, raise `kill_delay` so the old process fully releases the port first.
 - **It is a dev tool, not a supervisor.** Don't ship Air in your Docker runtime stage or systemd unit — run the plain compiled binary there. A common setup uses Air only in a `docker-compose` *dev* override with the source bind-mounted.
 - **Editor + Air together:** keep `gofmt`/`goimports`-on-save in your editor; Air handles rebuild/restart, your editor handles formatting.
 
@@ -534,7 +535,7 @@ A framework gives you the *mechanics*; REST gives you the *conventions* that mak
 **REST** (Representational State Transfer) models your system as **resources** (nouns) that clients manipulate through a uniform set of HTTP **methods** (verbs). The core ideas you actually apply:
 
 - **Resources are nouns, not actions.** `/users`, `/orders`, `/orders/42/items` — never `/getUser` or `/createOrder`. The *method* is the verb.
-- **Statelessness.** Each request carries everything needed to process it (auth token, parameters); the server keeps no per-client session in memory. This is what lets you run many identical instances behind a load balancer (§16) — any instance can serve any request.
+- **Statelessness.** Each request carries everything needed to process it (auth token, parameters); the server keeps no per-client session in memory. This is what lets you run many identical instances behind a load balancer (§17) — any instance can serve any request.
 - **Uniform interface.** The same method means the same thing everywhere: GET reads, POST creates, PUT replaces, PATCH partially updates, DELETE removes.
 - **Representations.** A resource is transferred as a representation (usually JSON). The same resource could be offered as JSON or XML via content negotiation (§5.7).
 
@@ -623,7 +624,7 @@ type ErrorBody struct {
 	Code    string       `json:"code"`              // machine-readable: "not_found", "validation_failed"
 	Message string       `json:"message"`           // human-readable summary
 	Details []FieldError `json:"details,omitempty"` // per-field validation problems
-	TraceID string       `json:"trace_id,omitempty"`// correlation ID for support (§14)
+	TraceID string       `json:"trace_id,omitempty"`// correlation ID for support (§15)
 }
 type ErrorResponse struct {
 	Error ErrorBody `json:"error"`
@@ -877,7 +878,7 @@ r := gin.New()
 r.MaxMultipartMemory = 8 << 20 // 8 MiB buffered in RAM; the remainder goes to a temp file
 ```
 
-This is *not* a hard cap on upload size — large files still land on disk. Enforce a **hard total request size** separately so a client can't fill your disk (§7.6 / §17).
+This is *not* a hard cap on upload size — large files still land on disk. Enforce a **hard total request size** separately so a client can't fill your disk (§7.6 / §18).
 
 ### 7.2 Single file upload **[I]**
 
@@ -1145,7 +1146,7 @@ func buildURL(c *gin.Context, name string) string {
 - Decode images and reject extreme dimensions (decompression bombs).
 - Store outside the webroot; serve with safe `Content-Type`/`Content-Disposition`.
 - Run uploads through a virus scanner (e.g. ClamAV) for untrusted users.
-- Put upload endpoints behind auth + rate limiting (§10, §11, §17).
+- Put upload endpoints behind auth + rate limiting (§10, §11, §18).
 
 ---
 
@@ -1227,7 +1228,7 @@ my-api/
 │   └── shared/                     # cross-cutting code used by multiple features
 │       ├── middleware/             #   auth, logging, request-id, recovery, cors
 │       ├── config/                 #   typed config
-│       ├── httpx/                  #   response/error envelope helpers (§15)
+│       ├── httpx/                  #   response/error envelope helpers (§16)
 │       └── db/                     #   pgxpool setup, migration runner
 ├── migrations/
 ├── Dockerfile
@@ -1285,7 +1286,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 > **Recommendation:** For anything you expect to **grow or be maintained by more than one or two people, use the feature/domain-based (vertical slice) structure** — it is the Go community's prevailing recommendation for scalable services precisely because it keeps coupling low as the system grows. Start *flat* if the app is tiny, and refactor into feature packages the moment you have a second feature. Use the layer-based structure only for small services or when a team strongly prefers the familiar MVC shape. Whichever you pick, keep `main` as the only place that knows concrete types (§9.4), and keep `gin` out of the service/domain layers.
 
-The worked example in §20 uses the **feature-based** structure.
+The worked example in §21 uses the **feature-based** structure.
 
 ---
 
@@ -1339,7 +1340,7 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	u, err := h.svc.Register(c.Request.Context(), req.Email, req.Name, req.Password)
 	if err != nil {
-		respondDomainError(c, err) // maps domain error → status (§15)
+		respondDomainError(c, err) // maps domain error → status (§16)
 		return
 	}
 	c.JSON(http.StatusCreated, toUserResponse(u))
@@ -1546,7 +1547,7 @@ Gin **middleware** *is* the decorator pattern: a function that wraps the handler
 
 ### 9.8 Service/use-case layer & domain errors → HTTP **[A]**
 
-The service returns **domain errors** (`user.ErrNotFound`, `user.ErrEmailTaken`) — it knows nothing about HTTP status codes. The *transport* layer maps those to statuses in one place (§15), so the mapping is consistent and the business logic stays clean and portable (the same service could back a gRPC or CLI front-end).
+The service returns **domain errors** (`user.ErrNotFound`, `user.ErrEmailTaken`) — it knows nothing about HTTP status codes. The *transport* layer maps those to statuses in one place (§16), so the mapping is consistent and the business logic stays clean and portable (the same service could back a gRPC or CLI front-end).
 
 ```go
 func (s *Service) Register(ctx context.Context, email, name, pw string) (User, error) {
@@ -1655,7 +1656,7 @@ func Logger(base *slog.Logger) gin.HandlerFunc {
 }
 ```
 
-> **Security recommendation:** Never log secrets, full `Authorization` headers, passwords, tokens, or full request bodies. Log identifiers, not payloads (§17).
+> **Security recommendation:** Never log secrets, full `Authorization` headers, passwords, tokens, or full request bodies. Log identifiers, not payloads (§18).
 
 ### 10.4 Recovery (panic → 500) **[A]**
 
@@ -1712,7 +1713,7 @@ import (
 // Gzip compression (skip for already-compressed assets/uploads):
 r.Use(gzip.Gzip(gzip.DefaultCompression))
 
-// Token-bucket rate limit (per instance). For multi-instance, back it with Redis (§16.6).
+// Token-bucket rate limit (per instance). For multi-instance, back it with Redis (§17.6).
 func RateLimit(perSec float64, burst int) gin.HandlerFunc {
 	limiters := &sync.Map{} // clientIP → *rate.Limiter
 	return func(c *gin.Context) {
@@ -1749,7 +1750,7 @@ r.Use(size.RequestSizeLimiter(10 << 20)) // 10 MiB
 
 ## 11. Authentication & Authorization
 
-**Authentication** = who are you (proving identity). **Authorization** = what may you do (permissions). Keep them as separate middleware so you can mix them (some routes need auth + admin; some only auth). This section covers JWTs, RBAC, password hashing, API keys, and cookie vs token. For token/hash internals, see `JWT_AUTH_ARGON2_GUIDE.md`.
+**Authentication** = who are you (proving identity). **Authorization** = what may you do (permissions). Keep them as separate middleware so you can mix them (some routes need auth + admin; some only auth). This section covers JWTs, RBAC, password hashing, API keys, and cookie vs token. For token/hash internals, see `GO_JWT_ARGON2_GUIDE.md`.
 
 ### 11.1 Session vs token; cookie vs Authorization header **[A]**
 
@@ -1767,7 +1768,7 @@ type PasswordHasher interface {
 	Verify(plain, encoded string) (bool, error)
 }
 
-// bcrypt is simplest (cost 12+). Argon2id is stronger — see JWT_AUTH_ARGON2_GUIDE.md.
+// bcrypt is the simplest option (cost 12+); salt is embedded in the output.
 import "golang.org/x/crypto/bcrypt"
 
 type BcryptHasher struct{ cost int }
@@ -1785,7 +1786,86 @@ func (h BcryptHasher) Verify(plain, encoded string) (bool, error) {
 }
 ```
 
-> **Security recommendation:** On a failed login return the *same* generic "invalid credentials" whether the email or the password was wrong (don't reveal which), and run the hash verification even for unknown emails (compare against a dummy hash) to avoid a timing/enumeration oracle. Rate-limit login attempts (§17).
+**Argon2id (preferred in 2026).** Argon2id won the Password Hashing Competition and is **memory-hard** — it forces an attacker to spend large amounts of RAM per guess, which defeats the cheap massively-parallel GPU/ASIC cracking that hurts bcrypt. Go's `golang.org/x/crypto/argon2` gives you the raw KDF; you wrap it to (1) generate a **random salt** per password, (2) run `argon2.IDKey` with tuned parameters, and (3) encode everything into the standard **PHC string** (`$argon2id$v=19$m=…,t=…,p=…$salt$hash`) so the parameters travel *with* the hash — that's what lets you raise the cost later and still verify old hashes, and re-hash them on next login.
+
+```go
+import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"strings"
+
+	"golang.org/x/crypto/argon2"
+)
+
+// Parameters — tune so a single hash takes ~50–250ms on YOUR hardware (OWASP 2026
+// baseline: m=19456 KiB (19 MiB), t=2, p=1; raise memory first, then time). Store
+// them in the hash so they can evolve per-user without a migration.
+type Argon2idHasher struct {
+	memoryKiB uint32 // m: memory cost in KiB
+	time      uint32 // t: number of passes
+	threads   uint8  // p: parallelism (often = CPU cores, but keep it deterministic in prod)
+	saltLen   uint32
+	keyLen    uint32
+}
+
+func NewArgon2idHasher() Argon2idHasher {
+	return Argon2idHasher{memoryKiB: 19 * 1024, time: 2, threads: 1, saltLen: 16, keyLen: 32}
+}
+
+func (h Argon2idHasher) Hash(plain string) (string, error) {
+	salt := make([]byte, h.saltLen)
+	if _, err := rand.Read(salt); err != nil { // crypto/rand — never math/rand for salts
+		return "", err
+	}
+	key := argon2.IDKey([]byte(plain), salt, h.time, h.memoryKiB, h.threads, h.keyLen)
+	// Encode as the standard PHC string so params + salt are stored alongside the hash.
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, h.memoryKiB, h.time, h.threads,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key)), nil
+}
+
+func (h Argon2idHasher) Verify(plain, encoded string) (bool, error) {
+	// Parse params back OUT of the stored hash (so old hashes with old params still verify).
+	p, salt, want, err := decodePHC(encoded)
+	if err != nil {
+		return false, err
+	}
+	got := argon2.IDKey([]byte(plain), salt, p.time, p.memoryKiB, p.threads, uint32(len(want)))
+	// CONSTANT-TIME compare — never `==`/`bytes.Equal` on secret-derived values (timing leak).
+	return subtle.ConstantTimeCompare(got, want) == 1, nil
+}
+
+type argonParams struct{ memoryKiB, time uint32; threads uint8 }
+
+func decodePHC(s string) (argonParams, []byte, []byte, error) {
+	parts := strings.Split(s, "$") // ["", "argon2id", "v=19", "m=..,t=..,p=..", salt, hash]
+	if len(parts) != 6 || parts[1] != "argon2id" {
+		return argonParams{}, nil, nil, errors.New("bad argon2 hash format")
+	}
+	var p argonParams
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.memoryKiB, &p.time, &p.threads); err != nil {
+		return argonParams{}, nil, nil, err
+	}
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return argonParams{}, nil, nil, err
+	}
+	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
+	return p, salt, hash, err
+}
+```
+
+> **Security recommendations (auth):**
+>
+> - **Constant-time compare** the derived key (`crypto/subtle`) — comparing with `==` leaks timing that can reveal how many leading bytes matched.
+> - On a failed login return the **same generic** "invalid credentials" whether the email or the password was wrong, and **run a hash verification even for unknown emails** (compare against a fixed dummy hash) so response timing doesn't become a user-enumeration oracle.
+> - **Opportunistically re-hash:** on a successful login, if the stored hash's parameters are weaker than your current `Argon2idHasher` (you parsed them out of the PHC string), re-hash the plaintext you already have and update the row — your whole user base upgrades cost silently over time.
+> - **Rate-limit and lock out** repeated failures per account/IP (§18); add a **pepper** (a secret app-wide key from your secret manager, mixed in before hashing) if you want defence even against a full DB leak.
+> - Tune `m`/`t` so one hash takes ~50–250 ms on production hardware — fast enough for users, painful for attackers. Full internals: `GO_JWT_ARGON2_GUIDE.md`.
 
 ### 11.3 JWT access + refresh tokens **[A]**
 
@@ -1838,6 +1918,137 @@ func (m *JWTManager) Parse(tokenStr string) (*Claims, error) {
 ```
 
 > **Security recommendation:** Always pin the expected signing algorithm in the keyfunc (above). Load the secret from config/secret-manager, never hardcode. Require expiry. Keep access-token TTL short. On logout/compromise, revoke the refresh token (delete its server record / add its jti to a denylist).
+
+**Refresh-token rotation, reuse detection & revocation.** A short access token bounds leak damage, but the long-lived refresh token is now the crown jewel — if it's stolen, the thief can mint access tokens until it expires. The industry-standard defence is **rotation with reuse detection**:
+
+- **One-time-use rotation:** every time a refresh token is used, you **issue a brand-new one** and mark the old one *used*. A refresh token works exactly once.
+- **Token families:** all refresh tokens descended from one login share a **family ID**. Rotation moves the family forward one token at a time.
+- **Reuse detection = theft detection:** if an *already-used* (rotated-out) refresh token is ever presented again, that means two parties hold it — the legitimate user **and** an attacker. You can't tell which is which, so you **revoke the entire family**, forcing a fresh login. This turns a stolen refresh token into a single-use weapon that trips an alarm.
+- **Store hashes, not tokens:** persist only a **hash** of each refresh token (treat it like a password), so a DB leak doesn't hand out valid tokens.
+
+```go
+// The refresh token sent to the client is opaque random bytes; the server stores
+// only its HASH plus bookkeeping. (Could be a Postgres table or a Redis hash.)
+type RefreshRecord struct {
+	TokenHash string    // sha256 of the raw token (index this)
+	UserID    string
+	FamilyID  string    // shared by all tokens from one login session
+	ExpiresAt time.Time
+	UsedAt    *time.Time // nil = never used; non-nil = already rotated (reuse → theft)
+	Revoked   bool
+}
+
+type RefreshStore interface {
+	Save(ctx context.Context, r RefreshRecord) error
+	FindByHash(ctx context.Context, hash string) (*RefreshRecord, error)
+	MarkUsed(ctx context.Context, hash string) error
+	RevokeFamily(ctx context.Context, familyID string) error // kill an entire compromised session
+	RevokeAllForUser(ctx context.Context, userID string) error // "log out everywhere"
+}
+
+func newOpaqueToken() (raw, hash string, err error) {
+	b := make([]byte, 32)
+	if _, err = rand.Read(b); err != nil { // crypto/rand
+		return "", "", err
+	}
+	raw = base64.RawURLEncoding.EncodeToString(b)
+	sum := sha256.Sum256([]byte(raw))
+	return raw, hex.EncodeToString(sum[:]), nil
+}
+```
+
+```go
+// Issue a fresh refresh token within a family (new login → new familyID; rotation → same).
+func (s *AuthService) issueRefresh(ctx context.Context, userID, familyID string) (raw string, err error) {
+	raw, hash, err := newOpaqueToken()
+	if err != nil {
+		return "", err
+	}
+	rec := RefreshRecord{TokenHash: hash, UserID: userID, FamilyID: familyID,
+		ExpiresAt: time.Now().Add(s.refreshTTL)} // e.g. 7–30 days
+	return raw, s.store.Save(ctx, rec)
+}
+
+// The rotation + reuse-detection core, called by the /auth/refresh endpoint.
+func (s *AuthService) Refresh(ctx context.Context, rawRefresh string) (access, newRefresh string, err error) {
+	sum := sha256.Sum256([]byte(rawRefresh))
+	rec, err := s.store.FindByHash(ctx, hex.EncodeToString(sum[:]))
+	if err != nil || rec == nil {
+		return "", "", ErrInvalidRefresh // unknown token
+	}
+	// ---- REUSE DETECTION ----
+	if rec.Revoked || rec.UsedAt != nil {
+		// A used/revoked token is being replayed → assume theft → nuke the whole family.
+		_ = s.store.RevokeFamily(ctx, rec.FamilyID)
+		return "", "", ErrRefreshReuseDetected // surfaces as 401; user must log in again
+	}
+	if time.Now().After(rec.ExpiresAt) {
+		return "", "", ErrInvalidRefresh
+	}
+	// ---- ROTATE ----
+	if err := s.store.MarkUsed(ctx, rec.TokenHash); err != nil { // old token now one-time-spent
+		return "", "", err
+	}
+	role, _ := s.users.RoleOf(ctx, rec.UserID)
+	if access, err = s.jwt.NewAccessToken(rec.UserID, role); err != nil {
+		return "", "", err
+	}
+	newRefresh, err = s.issueRefresh(ctx, rec.UserID, rec.FamilyID) // same family, moved forward
+	return access, newRefresh, err
+}
+```
+
+```go
+// Gin handlers wiring the refresh token into an httpOnly cookie (never readable by JS).
+const refreshCookie = "refresh_token"
+
+func (h *AuthHandler) setRefreshCookie(c *gin.Context, raw string) {
+	c.SetSameSite(http.SameSiteStrictMode) // CSRF defence for the cookie
+	c.SetCookie(refreshCookie, raw,
+		int(h.refreshTTL.Seconds()),
+		"/auth", "", // PATH-SCOPE the cookie to the auth endpoints only
+		true,        // Secure: HTTPS only
+		true)        // HttpOnly: invisible to JavaScript (XSS can't steal it)
+}
+
+// POST /auth/login → verify password (Argon2id §11.2), return access token + set refresh cookie.
+func (h *AuthHandler) Login(c *gin.Context) {
+	// ... bind+validate creds, verify with PasswordHasher.Verify, look up user ...
+	access, raw, err := h.svc.StartSession(c.Request.Context(), user.ID, user.Role) // new family
+	if err != nil { /* 500 */ return }
+	h.setRefreshCookie(c, raw)
+	c.JSON(200, gin.H{"access_token": access, "token_type": "Bearer", "expires_in": 900})
+}
+
+// POST /auth/refresh → read the cookie, rotate, set the new cookie, return a new access token.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	raw, err := c.Cookie(refreshCookie)
+	if err != nil {
+		c.AbortWithStatusJSON(401, gin.H{"error": "missing refresh token"})
+		return
+	}
+	access, newRaw, err := h.svc.Refresh(c.Request.Context(), raw)
+	if err != nil {
+		// On reuse/invalid: clear the cookie so the client stops retrying a dead token.
+		c.SetCookie(refreshCookie, "", -1, "/auth", "", true, true)
+		c.AbortWithStatusJSON(401, gin.H{"error": "invalid session, please log in again"})
+		return
+	}
+	h.setRefreshCookie(c, newRaw)
+	c.JSON(200, gin.H{"access_token": access, "token_type": "Bearer", "expires_in": 900})
+}
+
+// POST /auth/logout → revoke this family (this device) and clear the cookie.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	if raw, err := c.Cookie(refreshCookie); err == nil {
+		_ = h.svc.RevokeByRawRefresh(c.Request.Context(), raw) // revoke the family
+	}
+	c.SetCookie(refreshCookie, "", -1, "/auth", "", true, true)
+	c.Status(204)
+}
+```
+
+> **Why this design is secure:** the access token stays a stateless, short-lived JWT (fast to verify, no DB hit per request); only the *refresh* path touches the store. Rotation makes every refresh token single-use; reuse detection converts a stolen token into a self-defeating alarm that revokes the session; storing only hashes means a DB breach leaks nothing usable; the httpOnly+Secure+SameSite, path-scoped cookie keeps the refresh token out of JavaScript's reach (XSS) and off cross-site requests (CSRF). For **"log out everywhere"**, call `RevokeAllForUser`; also revoke all families on a **password change**. A periodic job prunes expired/used records. (Token & hash internals: `GO_JWT_ARGON2_GUIDE.md`.)
 
 ### 11.4 Auth middleware **[A]**
 
@@ -1910,7 +2121,7 @@ c.SetCookie("refresh_token", token,
 
 ## 12. Database Layer
 
-For relational data use **pgx** (the high-performance Postgres driver/toolkit) directly, or **GORM** (an ORM) when you want less boilerplate. This guide shows pgx; see `POSTGRESQL_GUIDE.md` and `RELATIONAL_DB_DESIGN_GUIDE.md` for SQL/schema depth and `GO_GORM_ENT_GUIDE.md` for the ORM route.
+For relational data you have two good routes: **pgx** (the high-performance Postgres driver/toolkit) for hand-written SQL behind a repository, or **Ent** (`entgo.io` — Meta's schema-as-Go-code ORM with **code generation** for fully type-safe, compile-checked queries) when you want less boilerplate and want the compiler to catch query mistakes. This guide shows **pgx** as the default (§12.1–§12.5) and then the **Ent** alternative behind the same repository interface (§12.6). See `POSTGRESQL_GUIDE.md` and `RELATIONAL_DB_DESIGN_GUIDE.md` for SQL/schema depth, and `GO_ENT_ORM_GUIDE.md` for the full Ent guide. (Either way, the repository pattern from §9.3 keeps your services ignorant of which one you chose.)
 
 ### 12.1 Connection pooling **[A]**
 
@@ -2057,17 +2268,296 @@ rows, _ := pool.Query(ctx, `SELECT order_id, sku, qty FROM items WHERE order_id 
 
 > **Best practice:** Always pass `c.Request.Context()` into every DB call so a client disconnect or request timeout cancels the query instead of holding a connection. Add appropriate indexes (see `RELATIONAL_DB_DESIGN_GUIDE.md`) — a missing index turns a fast query into a table scan that pools can't save you from.
 
+### 12.6 The ORM route — Ent (type-safe, schema-as-code) **[A]**
+
+Hand-written pgx is fast and explicit, but for large schemas it's a lot of boilerplate and the SQL isn't checked until runtime. **Ent** flips that: you declare your schema as Go code, run **codegen**, and get a fully **type-safe client** where every query, filter, and relationship traversal is compile-checked — a typo'd column or a wrong type is a *build* error, not a 2 a.m. production panic. Ent also solves eager-loading (the N+1 problem from §12.5) cleanly with `.With…()`. It slots behind the **same repository interface** (§9.3), so your services never know you switched. Full depth is in `GO_ENT_ORM_GUIDE.md`; here is how it plugs into this Gin architecture.
+
+**1) Declare the schema as Go code** (`ent/schema/`), then generate the client:
+
+```go
+// ent/schema/user.go — the schema IS Go code; Ent generates the client from it.
+package schema
+
+import (
+	"entgo.io/ent"
+	"entgo.io/ent/schema/edge"
+	"entgo.io/ent/schema/field"
+)
+
+type User struct{ ent.Schema }
+
+func (User) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("email").Unique().NotEmpty(),
+		field.String("password_hash").Sensitive(), // Sensitive() omits it from logs/JSON
+		field.String("role").Default("user"),
+		field.Time("created_at").Default(time.Now).Immutable(),
+	}
+}
+
+// Edges are relationships. A user has many orders (the FK lives on Order).
+func (User) Edges() []ent.Edge {
+	return []ent.Edge{ edge.To("orders", Order.Type) }
+}
+```
+
+```bash
+# Generate the type-safe client into ./ent (commit the generated code or regenerate in CI):
+go generate ./...
+#   (driven by an  //go:generate go run entgo.io/ent/cmd/ent generate ./ent/schema  directive)
+```
+
+**2) Open the client** (Ent runs on top of `database/sql`; with Postgres use the pgx stdlib driver so you keep pgx's performance):
+
+```go
+import (
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/jackc/pgx/v5/stdlib" // registers "pgx" as a database/sql driver
+	"database/sql"
+	"myapp/ent"
+)
+
+func NewEntClient(ctx context.Context, dsn string) (*ent.Client, error) {
+	db, err := sql.Open("pgx", dsn) // pgx via database/sql — pooling configured on *sql.DB
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(time.Hour)
+	drv := entsql.OpenDB(dialect.Postgres, db)
+	client := ent.NewClient(ent.Driver(drv))
+	if err := db.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("db ping: %w", err)
+	}
+	return client, nil
+}
+```
+
+**3) Implement the repository interface with Ent** — same interface the pgx repo satisfied (§9.3), so the service is unchanged:
+
+```go
+// internal/user/repository_ent.go — Ent adapter (swap in for the pgx one).
+type EntUserRepo struct{ client *ent.Client }
+
+func NewEntUserRepo(c *ent.Client) *EntUserRepo { return &EntUserRepo{client: c} }
+
+func (r *EntUserRepo) Create(ctx context.Context, email, hash string) (*User, error) {
+	// Fully type-safe builder: .SetEmail / .SetPasswordHash are generated methods.
+	u, err := r.client.User.Create().SetEmail(email).SetPasswordHash(hash).Save(ctx)
+	if err != nil {
+		if ent.IsConstraintError(err) { // unique-violation → domain error (maps to 409)
+			return nil, ErrEmailTaken
+		}
+		return nil, err
+	}
+	return toDomain(u), nil
+}
+
+func (r *EntUserRepo) FindByEmail(ctx context.Context, email string) (*User, error) {
+	u, err := r.client.User.Query().
+		Where(user.EmailEQ(email)). // generated predicate — compile-checked column & type
+		Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomain(u), nil
+}
+```
+
+**4) Eager-load to kill N+1 (§12.5), the Ent way** — `.WithOrders()` fetches the related rows in a batched extra query, not one-per-parent:
+
+```go
+// One user with all their orders, no N+1 — Ent batches the edge load.
+u, err := r.client.User.Query().
+	Where(user.ID(id)).
+	WithOrders(func(q *ent.OrderQuery) { q.Order(ent.Desc(order.FieldCreatedAt)).Limit(20) }).
+	Only(ctx)
+// u.Edges.Orders is populated.
+```
+
+**5) Transactions** — Ent has first-class tx that compose with the service layer (the analogue of §12.3's transactor):
+
+```go
+func (s *OrderService) Place(ctx context.Context, o Order) error {
+	return ent.WithTx(ctx, s.client, func(tx *ent.Tx) error {
+		if _, err := tx.Order.Create().SetUserID(o.UserID).SetTotal(o.Total).Save(ctx); err != nil {
+			return err // auto-rollback
+		}
+		_, err := tx.Ledger.Create().SetUserID(o.UserID).SetAmount(-o.Total).Save(ctx)
+		return err // both commit together, or both roll back
+	})
+}
+```
+
+**Migrations:** Ent can auto-migrate in dev (`client.Schema.Create(ctx)`), but for production use **versioned migrations** via **Atlas** (`ent/migrate`) — diff the schema, generate SQL, review it, apply in your deploy step (mirrors §12.4's discipline, just generated from the schema).
+
+> **pgx vs Ent — when to pick which:** reach for **pgx** when you want full control of the SQL, have a small/stable schema, or need hand-tuned queries; reach for **Ent** when the schema is large or evolving, you want **compile-time-safe queries** and generated CRUD, and you value codegen catching mistakes. Because both live behind the **repository interface** (§9.3), you can even start with pgx and migrate hot spots to Ent (or vice-versa) without touching your services or handlers.
+
 ---
 
-## 13. Configuration & Secrets
+## 13. Realtime Updates with WebSockets
+
+A REST API is request/response: the client must *ask* for changes. For features where the server needs to **push** changes as they happen — live order status, notifications, dashboards, chat, collaborative editing — you add **WebSockets** on *some* routes alongside your normal REST endpoints. A WebSocket is a single long-lived, bidirectional TCP connection (upgraded from an HTTP request), so the server can send a message the instant something changes instead of waiting to be polled. This section shows how to bolt realtime onto the Gin architecture cleanly; for the protocol in depth (the one-reader/one-writer rule, ping/pong, backpressure, a full chat hub, Redis scaling), see `GO_GORILLA_WEBSOCKETS_GUIDE.md`.
+
+> **WebSocket vs SSE vs polling:** if you only need *server→client* pushes (notifications, live status), **Server-Sent Events** are simpler (plain HTTP, auto-reconnect) — see the `NETWORKING_GUIDE.md`. Use **WebSockets** when you need *bidirectional* messaging or many high-frequency updates. Both beat polling.
+
+### 13.1 Upgrading a Gin route to a WebSocket **[A]**
+
+A WebSocket route is a normal Gin handler that hands the underlying `http.ResponseWriter`/`*http.Request` to a gorilla **`Upgrader`**, which performs the HTTP→WS handshake and returns a `*websocket.Conn`. The two things you *must* get right are **`CheckOrigin`** (or you've opened a Cross-Site WebSocket Hijacking hole) and **closing the connection**.
+
+```go
+import (
+	"net/http"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+)
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	// CRITICAL (security): the browser does NOT enforce same-origin for WebSockets and does
+	// NOT send a CORS preflight — so an attacker's page can open a WS to your API carrying the
+	// victim's cookies (CSWSH). Validate the Origin yourself against an allowlist. Returning
+	// true unconditionally (the lazy default you'll see in tutorials) is a vulnerability.
+	CheckOrigin: func(r *http.Request) bool {
+		switch r.Header.Get("Origin") {
+		case "https://app.example.com", "https://admin.example.com":
+			return true
+		}
+		return false
+	},
+}
+
+func (h *WSHandler) Handle(c *gin.Context) {
+	// Auth happens in middleware BEFORE the upgrade (see 13.2) — userID is on the context.
+	userID := c.GetString("userID")
+
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil) // hijacks the connection
+	if err != nil {
+		return // Upgrade already wrote an error response
+	}
+	client := h.hub.register(userID, conn) // hand the connection to the hub
+	go client.writePump()                  // the ONE goroutine allowed to write to this conn
+	client.readPump()                      // blocks here reading; cleans up + unregisters on exit
+}
+```
+
+> **The one-writer rule:** a `*websocket.Conn` is **not safe for concurrent writes**. Funnel every outgoing message through a single per-client goroutine (`writePump`) that owns the socket and reads from a buffered `chan []byte`. Other parts of your app *send to the channel*, never to the conn directly. Violating this is the #1 GSAP-of-WebSockets bug (`panic: concurrent write to websocket connection`).
+
+### 13.2 Authenticating the WebSocket **[A]**
+
+Browsers can't set an `Authorization` header on a WebSocket from JavaScript, so the standard bearer-token middleware (§11.4) won't fire as-is. Two solid options: (a) the same **httpOnly cookie** used for the session is sent automatically on the upgrade request — validate it in middleware; or (b) pass a **short-lived access token as a query parameter** (`wss://api/ws?access_token=…`) and validate that. Authenticate **before** upgrading — never upgrade an anonymous socket and authenticate afterward.
+
+```go
+// A WS-specific auth middleware: accept the token from a cookie OR a query param,
+// reuse the SAME JWTManager.Parse from §11.3, and stash identity on the context.
+func WSAuth(jwtMgr *JWTManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tok := c.Query("access_token")
+		if tok == "" {
+			tok, _ = c.Cookie("access_token") // if you also set access as a cookie
+		}
+		claims, err := jwtMgr.Parse(tok)
+		if err != nil {
+			c.AbortWithStatusJSON(401, gin.H{"error": "unauthenticated"})
+			return
+		}
+		c.Set("userID", claims.UserID)
+		c.Set("role", claims.Role)
+		c.Next()
+	}
+}
+
+// Mount it on the WS route only (REST routes keep header-bearer auth):
+//   ws := r.Group("/ws"); ws.Use(WSAuth(jwtMgr)); ws.GET("", wsHandler.Handle)
+```
+
+> **Security:** prefer a **separate, short-lived** token for the WS query param (query strings can land in logs/proxies). Keep `CheckOrigin` strict so a malicious origin can't ride the cookie. Set `conn.SetReadLimit(…)` to cap message size and a read deadline + ping/pong so dead connections are reaped (see the WebSockets guide).
+
+### 13.3 The hub, and pushing updates from the service layer **[A]**
+
+The clean way to wire realtime into the architecture (§9): the **service** doesn't know about WebSockets — it depends on a small **`Notifier` interface** (a port). The **hub** is the adapter that implements it and owns all live connections, indexed by user so you can target one user's devices. This keeps the dependency pointing inward (service → interface), exactly like the repository pattern (§9.3).
+
+```go
+// internal/order/service.go — the SERVICE depends on an interface, not on gorilla.
+type Notifier interface {
+	NotifyUser(userID string, event any) // fire-and-forget push to a user's live connections
+}
+
+type OrderService struct {
+	repo     OrderRepository
+	notifier Notifier // injected (DI §9) — a hub in prod, a no-op/fake in tests
+}
+
+func (s *OrderService) UpdateStatus(ctx context.Context, orderID, status string) error {
+	o, err := s.repo.SetStatus(ctx, orderID, status)
+	if err != nil {
+		return err
+	}
+	// Push the change to that user in real time — the REST caller and the live UI both see it.
+	s.notifier.NotifyUser(o.UserID, map[string]any{"type": "order.updated", "id": o.ID, "status": status})
+	return nil
+}
+```
+
+```go
+// internal/realtime/hub.go — the adapter that implements Notifier and owns connections.
+type Hub struct {
+	mu      sync.RWMutex
+	clients map[string]map[*Client]struct{} // userID → set of that user's connections (multi-device)
+}
+
+func (h *Hub) NotifyUser(userID string, event any) {
+	msg, _ := json.Marshal(event)
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.clients[userID] {
+		select {
+		case c.send <- msg: // hand to the client's writePump via its buffered channel
+		default:
+			// Slow consumer: drop or close rather than block the whole service.
+			close(c.send)
+			delete(h.clients[userID], c)
+		}
+	}
+}
+// register/unregister take the lock and add/remove from clients[userID]; readPump calls
+// unregister on disconnect. Full hub (writePump/readPump/ping-pong) is in the WebSockets guide.
+```
+
+A client subscribes once and receives every relevant push:
+
+```js
+// Browser: open the socket with a short-lived access token, react to pushes.
+const ws = new WebSocket(`wss://api.example.com/ws?access_token=${accessToken}`);
+ws.onmessage = (e) => {
+  const evt = JSON.parse(e.data);
+  if (evt.type === "order.updated") updateOrderRow(evt.id, evt.status); // live UI update
+};
+```
+
+### 13.4 Scaling realtime across instances **[A]**
+
+The in-memory hub works on **one** server. Behind a load balancer with multiple instances (§16), a user's WebSocket may be on instance A while the order update happens on instance B — B's hub has no connection to push to. The fix is a **backplane**: instances publish events to **Redis Pub/Sub** (or NATS/Kafka), and every instance's hub subscribes and pushes to whichever of *its* local connections match. Your `Notifier` then publishes to Redis instead of (or in addition to) the local hub — the service code doesn't change. Also configure the proxy for WebSockets (Nginx needs the `Upgrade`/`Connection` headers and a long `proxy_read_timeout` — see `NGINX_GUIDE.md`) and use **sticky sessions** or a shared backplane so reconnects work. Full Redis-backplane pattern: `GO_GORILLA_WEBSOCKETS_GUIDE.md`; Redis details: `REDIS_GUIDE.md`.
+
+> **Production checklist:** strict `CheckOrigin`; authenticate before upgrade; one writer goroutine per connection; `SetReadLimit` + read/write deadlines + ping/pong keepalive; bounded per-client send buffer with a drop/close policy for slow clients; graceful shutdown that closes all sockets; a Redis (or similar) backplane once you run more than one instance.
+
+---
+
+## 14. Configuration & Secrets
 
 Configuration is everything that varies between environments (dev/staging/prod): ports, DB DSNs, secrets, timeouts, feature flags. Get this wrong and you'll hardcode a secret into a binary or ship debug mode to production.
 
-### 13.1 The 12-factor approach — config in the environment **[I]**
+### 14.1 The 12-factor approach — config in the environment **[I]**
 
 The **12-factor** rule: store config in **environment variables**, not in code or committed files. The same compiled binary then runs in any environment by changing env vars only — no rebuild. Locally you can use a `.env` file (loaded with `godotenv`), but `.env` is **gitignored** and never committed.
 
-### 13.2 Typed config struct + validation at startup **[I/A]**
+### 14.2 Typed config struct + validation at startup **[I/A]**
 
 Parse all config into one **typed struct** once at startup, validate it, and **fail fast** (exit) if anything required is missing or malformed. This turns "mysterious 3am nil DSN" into "clear startup error". Below uses plain `os` parsing; **Viper** adds files/flags/precedence if you outgrow it.
 
@@ -2138,17 +2628,17 @@ func getint64(k string, def int64) int64 {
 }
 ```
 
-### 13.3 Secrets handling **[A]**
+### 14.3 Secrets handling **[A]**
 
 > **Security recommendation:** Never commit secrets (add `.env` to `.gitignore`). In production, inject secrets via your platform's secret manager (Kubernetes Secrets, AWS Secrets Manager, Vault, Doppler) as env vars or mounted files — not baked into the image. Rotate secrets periodically. Don't log config that contains secrets; if you log the loaded config for diagnostics, **redact** secret fields. Keep secrets out of error messages returned to clients.
 
 ---
 
-## 14. Observability
+## 15. Observability
 
 Observability is your ability to answer "what is the system doing and why" in production. The three pillars are **logs**, **metrics**, and **traces**, tied together by a **correlation ID**.
 
-### 14.1 Structured logging (slog / zap) **[A]**
+### 15.1 Structured logging (slog / zap) **[A]**
 
 Use `log/slog` (stdlib, 1.21+) with a JSON handler in production so logs are machine-parseable; `zap` if you need the absolute lowest allocation. Attach the request ID to every log line (§10.3) so all logs for one request can be grouped.
 
@@ -2164,7 +2654,7 @@ func newLogger(env string) *slog.Logger {
 }
 ```
 
-### 14.2 Metrics (Prometheus) **[A]**
+### 15.2 Metrics (Prometheus) **[A]**
 
 Metrics are aggregate numbers (request counts, latencies, error rates) scraped by Prometheus and graphed in Grafana. Expose `/metrics`; record per-request counters and a latency histogram in middleware.
 
@@ -2203,7 +2693,7 @@ func Metrics() gin.HandlerFunc {
 
 > **Gotcha:** Label by `c.FullPath()` (the route template), never the raw URL — using `/users/123`, `/users/124`, … as labels creates unbounded cardinality and will OOM Prometheus.
 
-### 14.3 Tracing (OpenTelemetry, overview) **[A]**
+### 15.3 Tracing (OpenTelemetry, overview) **[A]**
 
 Distributed tracing follows one request across services (API → DB → downstream API) as a tree of timed **spans**, so you can see *where* latency goes. Use **OpenTelemetry**: wrap the engine with `otelgin` middleware, propagate trace context via headers, and export spans to a collector (Jaeger/Tempo). Link the request ID and trace ID so a log line points to its trace.
 
@@ -2213,7 +2703,7 @@ Distributed tracing follows one request across services (API → DB → downstre
 // Then create child spans around DB/external calls using the request's context.
 ```
 
-### 14.4 Health & readiness endpoints **[A]**
+### 15.4 Health & readiness endpoints **[A]**
 
 Load balancers and orchestrators (Kubernetes) need to know if an instance should receive traffic. Two distinct checks:
 
@@ -2238,11 +2728,11 @@ r.GET("/readyz", func(c *gin.Context) {
 
 ---
 
-## 15. Centralized Error Handling
+## 16. Centralized Error Handling
 
 Scattered, inconsistent error responses are a maintenance nightmare and a security risk (leaking internals). Centralize: define a domain error model, map it to HTTP in **one** place, and always return the same envelope.
 
-### 15.1 Domain errors → HTTP status mapping **[A]**
+### 16.1 Domain errors → HTTP status mapping **[A]**
 
 The service returns *domain* errors; a single transport-layer mapper converts them to status codes + the §5.5 envelope. Add a typed error for cases that carry a status/code.
 
@@ -2294,7 +2784,7 @@ func RespondError(c *gin.Context, err error) {
 
 > **Security recommendation:** For unmapped/500 errors, return a generic message and a trace ID; log the detailed error internally. Never return raw `err.Error()`, stack traces, SQL errors, or driver messages to clients — they leak schema and implementation details that aid attackers.
 
-### 15.2 Handler usage **[A]**
+### 16.2 Handler usage **[A]**
 
 ```go
 func (h *Handler) GetByID(c *gin.Context) {
@@ -2311,11 +2801,11 @@ Validation errors get the field-level treatment from §6.6 (422); panic recovery
 
 ---
 
-## 16. Performance & Scale
+## 17. Performance & Scale
 
 A service "scales" when you handle more load by adding instances (horizontal scale) without rewrites. The enablers: statelessness, timeouts everywhere, pooling, caching, graceful lifecycle, and bounded concurrency.
 
-### 16.1 Graceful shutdown **[A]**
+### 17.1 Graceful shutdown **[A]**
 
 On deploy, the orchestrator sends SIGTERM. You must stop accepting new requests but **finish in-flight ones** before exiting, or you'll drop user requests mid-flight. Run the server in a goroutine and block on a signal, then `Shutdown` with a timeout.
 
@@ -2351,15 +2841,15 @@ func run(cfg *config.Config, handler http.Handler) error {
 }
 ```
 
-### 16.2 Timeouts everywhere **[A]**
+### 17.2 Timeouts everywhere **[A]**
 
-Every boundary needs a deadline or a slow/hung peer ties up resources forever: server `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout` (above), a per-request timeout middleware (§10.6), and `context`-bounded DB/external calls (§12). Without `ReadHeaderTimeout` you're exposed to Slowloris (§17).
+Every boundary needs a deadline or a slow/hung peer ties up resources forever: server `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout` (above), a per-request timeout middleware (§10.6), and `context`-bounded DB/external calls (§12). Without `ReadHeaderTimeout` you're exposed to Slowloris (§18).
 
-### 16.3 Statelessness & horizontal scaling **[A]**
+### 17.3 Statelessness & horizontal scaling **[A]**
 
 Keep **zero per-client state in process memory** (no in-RAM sessions, no local-only caches that must stay consistent). Then any instance serves any request, and you scale by running more identical instances behind a load balancer. Shared state (sessions, rate-limit counters, cache) goes in **Redis**; persistent state in the DB; uploaded files in object storage (§7.7), not local disk.
 
-### 16.4 Caching with Redis **[A]**
+### 17.4 Caching with Redis **[A]**
 
 Cache expensive, frequently-read, rarely-changing data to cut DB load and latency. The **cache-aside** pattern: look in cache; on miss, read DB, write cache with a TTL. See `REDIS_GUIDE.md` for depth.
 
@@ -2382,38 +2872,38 @@ func (s *Service) GetCached(ctx context.Context, id string) (User, error) {
 // On update/delete, invalidate: s.rdb.Del(ctx, "user:"+id)
 ```
 
-### 16.5 Goroutine safety & bounded concurrency **[A]**
+### 17.5 Goroutine safety & bounded concurrency **[A]**
 
-Shared mutable state touched by multiple requests must be synchronized (`sync.Mutex`/`RWMutex`) — Gin handlers run concurrently. For fan-out work (calling several downstreams) bound concurrency with a worker pool or `errgroup`, so a spike doesn't spawn unbounded goroutines and exhaust memory/connections. Always run `go test -race` (§18).
+Shared mutable state touched by multiple requests must be synchronized (`sync.Mutex`/`RWMutex`) — Gin handlers run concurrently. For fan-out work (calling several downstreams) bound concurrency with a worker pool or `errgroup`, so a spike doesn't spawn unbounded goroutines and exhaust memory/connections. Always run `go test -race` (§19).
 
-### 16.6 Profiling **[A]**
+### 17.6 Profiling **[A]**
 
 When something is slow, profile — don't guess. `net/http/pprof` exposes CPU/heap/goroutine profiles; analyse with `go tool pprof`. Gate it behind admin auth or an internal-only port — never expose `/debug/pprof` publicly.
 
 ---
 
-## 17. Security Hardening
+## 18. Security Hardening
 
 Security is not one feature; it's a checklist applied everywhere. This consolidates the OWASP-aligned essentials for a Gin API. Most map to specific sections above.
 
-### 17.1 The checklist **[A]**
+### 18.1 The checklist **[A]**
 
 - **Input validation (everywhere):** bind into DTOs with `binding` tags (§6); allowlist enums/sort fields with `oneof`; cap sizes and counts. Treat all input as hostile.
 - **SQL injection:** parameterised queries only (§12.2); never concatenate input into SQL; allowlist dynamic column/sort names.
 - **Authn/authz:** short-lived JWTs with pinned algorithm (§11.3); RBAC + service-layer ownership checks (§11.5); strong password hashing (§11.2).
-- **Secrets:** from env/secret-manager, never committed or logged (§13.3).
+- **Secrets:** from env/secret-manager, never committed or logged (§14.3).
 - **Transport security (TLS):** terminate TLS at the proxy/ingress or in-process (`srv.ListenAndServeTLS`); redirect HTTP→HTTPS; set HSTS.
-- **Secure response headers:** see §17.2.
+- **Secure response headers:** see §18.2.
 - **CORS correctly:** explicit origin allowlist; no `*` with credentials (§10.5).
 - **Rate limiting / brute-force:** global + stricter per-route limits on auth endpoints (§10.6); lockout/backoff on repeated login failures; `Retry-After`.
 - **Request size limits:** `MaxBytesReader` + `gin-contrib/size` (§7.6) to prevent memory exhaustion.
 - **File-upload security:** the §7.9 checklist (type by magic bytes, safe names, size caps, store outside webroot, safe `Content-Type`).
-- **Slowloris / slow-read:** set `ReadHeaderTimeout`/`ReadTimeout` (§16.1).
-- **Don't leak in errors/logs:** generic 500s (§15); never log tokens, passwords, full bodies, or PII (§10.3).
-- **Dependency scanning:** run `govulncheck` in CI (§17.3).
+- **Slowloris / slow-read:** set `ReadHeaderTimeout`/`ReadTimeout` (§17.1).
+- **Don't leak in errors/logs:** generic 500s (§16); never log tokens, passwords, full bodies, or PII (§10.3).
+- **Dependency scanning:** run `govulncheck` in CI (§18.3).
 - **Disable debug in prod:** `gin.ReleaseMode`; no `/debug/pprof` exposed; no verbose error bodies.
 
-### 17.2 Secure headers middleware **[A]**
+### 18.2 Secure headers middleware **[A]**
 
 ```go
 func SecureHeaders() gin.HandlerFunc {
@@ -2431,7 +2921,7 @@ func SecureHeaders() gin.HandlerFunc {
 }
 ```
 
-### 17.3 Dependency & vulnerability scanning **[A]**
+### 18.3 Dependency & vulnerability scanning **[A]**
 
 ```bash
 go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -2443,11 +2933,11 @@ go list -m -u all   # see available dependency updates
 
 ---
 
-## 18. Testing
+## 19. Testing
 
 The layered architecture pays off most in tests: the service is tested with a fake repo (no DB, microseconds), handlers with `httptest` (no network), and a few integration tests exercise the real stack.
 
-### 18.1 Unit-testing the service with a fake repository **[I/A]**
+### 19.1 Unit-testing the service with a fake repository **[I/A]**
 
 Because the service depends on the `Repository` *interface*, inject the in-memory fake (§9.3). No database, fast and deterministic. Use **table-driven tests** — Go's idiom for covering many cases compactly.
 
@@ -2497,7 +2987,7 @@ func (fakeHasher) Hash(p string) (string, error)        { return "hashed:" + p, 
 func (fakeHasher) Verify(p, e string) (bool, error)     { return e == "hashed:"+p, nil }
 ```
 
-### 18.2 Mocking the service for handler tests **[A]**
+### 19.2 Mocking the service for handler tests **[A]**
 
 The handler depends on a *service interface* (define one even if there's a single impl, just for testability). Pass a mock that returns canned results, and assert the HTTP status/body.
 
@@ -2512,7 +3002,7 @@ func (m mockUserSvc) Get(ctx context.Context, id string) (user.User, error) {
 }
 ```
 
-### 18.3 Handler tests with httptest + Gin test mode **[I/A]**
+### 19.3 Handler tests with httptest + Gin test mode **[I/A]**
 
 Use `gin.SetMode(gin.TestMode)`, build the router, and drive it with `httptest.NewRecorder()` + `httptest.NewRequest()` via `router.ServeHTTP` — no real socket.
 
@@ -2560,7 +3050,7 @@ func TestUserHandler_GetByID(t *testing.T) {
 }
 ```
 
-### 18.4 Testing a POST with a JSON body and validation **[I]**
+### 19.4 Testing a POST with a JSON body and validation **[I]**
 
 ```go
 func TestCreateUser_ValidationError(t *testing.T) {
@@ -2579,7 +3069,7 @@ func TestCreateUser_ValidationError(t *testing.T) {
 }
 ```
 
-### 18.5 Integration tests with testcontainers (note) **[A]**
+### 19.5 Integration tests with testcontainers (note) **[A]**
 
 Unit tests use fakes; a handful of **integration tests** should exercise the real pgx repository against a real Postgres to catch SQL/mapping bugs the fake can't. **`testcontainers-go`** spins up a throwaway Postgres in Docker for the test, runs migrations, and tears it down — real DB, no shared environment. Tag these tests (`//go:build integration`) so they run separately from fast unit tests.
 
@@ -2600,11 +3090,11 @@ go test -cover ./...               # coverage
 
 ---
 
-## 19. Deployment
+## 20. Deployment
 
 Ship the service as a small, static container image, configured by environment, behind a reverse proxy, with health checks and graceful shutdown. See `DOCKER_GUIDE.md` for Docker depth.
 
-### 19.1 Multi-stage Docker build (tiny static image) **[A]**
+### 20.1 Multi-stage Docker build (tiny static image) **[A]**
 
 A **multi-stage** build compiles in a full Go image, then copies *only the binary* into a minimal final image — a few MB instead of hundreds, with a smaller attack surface.
 
@@ -2630,20 +3120,20 @@ ENTRYPOINT ["/app"]
 
 > **Best practice:** Use `distroless` or `scratch` (with CA certs added if you make outbound TLS calls) for the smallest, most secure image. Pin the base image by digest in production. Don't bake secrets or `.env` into the image — inject at runtime.
 
-### 19.2 Behind a reverse proxy, health checks, 12-factor **[A]**
+### 20.2 Behind a reverse proxy, health checks, 12-factor **[A]**
 
 - **Reverse proxy / ingress** (Nginx, Caddy, a cloud LB, or Kubernetes Ingress) terminates TLS, load-balances across instances, and forwards to your container. Configure Gin's trusted proxies (§4.6) to match.
-- **Health checks:** point the orchestrator's liveness probe at `/healthz` and readiness at `/readyz` (§14.4). Readiness gates traffic during startup/migrations.
-- **Graceful shutdown** (§16.1) + a sufficient `terminationGracePeriodSeconds` so SIGTERM lets in-flight requests drain.
-- **12-factor config** (§13): one image, many environments, configured purely by env vars.
+- **Health checks:** point the orchestrator's liveness probe at `/healthz` and readiness at `/readyz` (§15.4). Readiness gates traffic during startup/migrations.
+- **Graceful shutdown** (§17.1) + a sufficient `terminationGracePeriodSeconds` so SIGTERM lets in-flight requests drain.
+- **12-factor config** (§14): one image, many environments, configured purely by env vars.
 
-### 19.3 CI/CD (note) **[A]**
+### 20.3 CI/CD (note) **[A]**
 
 A typical pipeline on each PR: `go vet` → `golangci-lint` → `go test -race -cover` → `govulncheck` → build image → push to registry → deploy (staging, then prod after approval). Run migrations as a separate, ordered step before rolling out new code that depends on them.
 
 ---
 
-## 20. Complete Worked Example: Users + Orders API
+## 21. Complete Worked Example: Users + Orders API
 
 This is a small but *real* slice of the architecture end-to-end, in the **feature-based** layout (§8.2): config → DB → repository → service → handler → middleware → router → `main` with graceful shutdown, plus a fake-repo unit test. Two features (`user`, `order`) and a `shared` package. Imports are shown; obvious repetition (full pgx scans for every method) is trimmed with comments to keep it readable.
 
@@ -2657,7 +3147,7 @@ my-api/
 └── go.mod
 ```
 
-### 20.1 Shared response/error helpers **[A]**
+### 21.1 Shared response/error helpers **[A]**
 
 ```go
 // internal/shared/httpx/respond.go
@@ -2723,7 +3213,7 @@ func RespondError(c *gin.Context, err error) {
 }
 ```
 
-### 20.2 The user feature **[A]**
+### 21.2 The user feature **[A]**
 
 ```go
 // internal/user/user.go — domain + port
@@ -2988,7 +3478,7 @@ func (h *Handler) GetByID(c *gin.Context) {
 }
 ```
 
-### 20.3 The order feature (abbreviated) **[A]**
+### 21.3 The order feature (abbreviated) **[A]**
 
 ```go
 // internal/order/order.go
@@ -3057,7 +3547,7 @@ func (s *Service) ListForUser(ctx context.Context, userID string, limit int) ([]
 }
 ```
 
-### 20.4 Composition root — `main.go` with graceful shutdown **[A]**
+### 21.4 Composition root — `main.go` with graceful shutdown **[A]**
 
 ```go
 // cmd/api/main.go
@@ -3170,7 +3660,7 @@ func main() {
 }
 ```
 
-### 20.5 The fake-repo unit test **[A]**
+### 21.5 The fake-repo unit test **[A]**
 
 ```go
 // internal/user/service_test.go
@@ -3225,14 +3715,14 @@ This example exercises every layer: typed config validated at startup, a pooled 
 
 ---
 
-## 21. Gotchas & Best Practices
+## 22. Gotchas & Best Practices
 
-### 21.1 Context & lifecycle
+### 22.1 Context & lifecycle
 
 - **Never use `*gin.Context` after the handler returns or in a goroutine** — it's pooled and recycled. Use `c.Copy()` for a snapshot and `c.Request.Context()` for cancellation (§4.1).
 - **Pass `c.Request.Context()` to every DB/external call** so client disconnects and timeouts cancel work instead of leaking connections.
 
-### 21.2 Binding & validation
+### 22.2 Binding & validation
 
 - **Prefer `ShouldBind*` over `Bind*`** so you control error format/status (§6.1).
 - **The body is read once.** Re-reading after binding yields nothing; use `ShouldBindBodyWith` if both middleware and handler need it (§4.2).
@@ -3240,20 +3730,20 @@ This example exercises every layer: typed config validated at startup, a pooled 
 - **Query binding uses the `form` tag, not `json`.**
 - **Allowlist sort/filter fields with `oneof`** and map to real columns — never interpolate into SQL (§5.4).
 
-### 21.3 Responses & chain control
+### 22.3 Responses & chain control
 
 - **`c.Abort()` does not `return`** — you must `return` after it, or the handler keeps running.
 - **Render once.** A second `c.JSON` (or `c.JSON` after an abort-with-JSON) causes a `superfluous WriteHeader` warning and a corrupt response.
 - **`c.AbortWithStatusJSON` already wrote the response** — don't write again.
 
-### 21.4 Routing & engine
+### 22.4 Routing & engine
 
 - **Set `gin.SetMode` before creating the engine.** Drive it from config; never ship debug mode.
 - **Configure trusted proxies** (`SetTrustedProxies`) or `ClientIP()` is spoofable (§4.6).
 - **Use `gin.New()` + explicit middleware in production**, but never forget `Recovery` (§2.2).
 - **Don't expose `/debug/pprof`, raw errors, or stack traces** to clients.
 
-### 21.5 Architecture
+### 22.5 Architecture
 
 - **Keep `gin` out of service/domain layers** — only the transport layer imports it, so the core is portable and unit-testable.
 - **Define interfaces where they're consumed** (the service), not next to implementations — keeps dependencies pointing inward.
@@ -3261,17 +3751,17 @@ This example exercises every layer: typed config validated at startup, a pooled 
 - **Don't add the repository/interface layers prematurely** for a trivial app — add them when you have a testing need or a second implementation.
 - **Use cents (int64) for money, never float.**
 
-### 21.6 Concurrency & resources
+### 22.6 Concurrency & resources
 
 - **Gin handlers run concurrently** — guard shared mutable state with a mutex, and run `go test -race`.
 - **Bound fan-out concurrency** (worker pool / `errgroup`) so spikes don't exhaust memory/connections.
-- **Always set server timeouts** and implement graceful shutdown (§16).
+- **Always set server timeouts** and implement graceful shutdown (§17).
 
-### 21.7 Security recap
+### 22.7 Security recap
 
-- Parameterised SQL; validate all input; safe file uploads (§7.9); explicit CORS; secure headers; rate-limit auth; short-lived JWTs with pinned alg; secrets from a manager; generic 500s; `govulncheck` in CI (§17).
+- Parameterised SQL; validate all input; safe file uploads (§7.9); explicit CORS; secure headers; rate-limit auth; short-lived JWTs with pinned alg; secrets from a manager; generic 500s; `govulncheck` in CI (§18).
 
-### 21.8 Quick reference — production middleware order
+### 22.8 Quick reference — production middleware order
 
 | # | Middleware | Why this position |
 |---|---|---|
@@ -3286,7 +3776,7 @@ This example exercises every layer: typed config validated at startup, a pooled 
 
 ---
 
-## 22. Study Path & Build-to-Learn Projects
+## 23. Study Path & Build-to-Learn Projects
 
 Work through these in order; each project forces the relevant concepts to stick. Read the cross-referenced guides alongside.
 
@@ -3304,17 +3794,17 @@ Read §7. **Project: Image Upload Service** — single + multiple uploads; valid
 
 ### Phase 4 — Architecture, middleware, auth (Week 4)
 
-Read §8–§11 and `GO_LANG_AND_PATTERNS_GUIDE.md` + `JWT_AUTH_ARGON2_GUIDE.md`. **Project: refactor Phase 2/3 into the feature-based structure** — handler→service→repository, DI in `main`, custom middleware (request-ID, structured logging, recovery, CORS, rate limit), JWT access/refresh auth, RBAC, secure password hashing. Goals: clean architecture, the two folder structures, middleware chains, authn/authz.
+Read §8–§11 and `GO_LANG_AND_PATTERNS_GUIDE.md` + `GO_JWT_ARGON2_GUIDE.md`. **Project: refactor Phase 2/3 into the feature-based structure** — handler→service→repository, DI in `main`, custom middleware (request-ID, structured logging, recovery, CORS, rate limit), JWT access/refresh auth, RBAC, secure password hashing. Goals: clean architecture, the two folder structures, middleware chains, authn/authz.
 
 ### Phase 5 — Database & observability (Week 5)
 
-Read §12, §14 and `POSTGRESQL_GUIDE.md` + `RELATIONAL_DB_DESIGN_GUIDE.md` + `REDIS_GUIDE.md`. **Project: wire a real Postgres** via pgx + pgxpool, golang-migrate migrations, transactions across two repositories, fix an N+1, add Redis cache-aside, add `/healthz` + `/readyz`, structured logs, Prometheus `/metrics`. Goals: real persistence, transactions, caching, observability.
+Read §12, §15 and `POSTGRESQL_GUIDE.md` + `RELATIONAL_DB_DESIGN_GUIDE.md` + `REDIS_GUIDE.md`. **Project: wire a real Postgres** via pgx + pgxpool, golang-migrate migrations, transactions across two repositories, fix an N+1, add Redis cache-aside, add `/healthz` + `/readyz`, structured logs, Prometheus `/metrics`. Goals: real persistence, transactions, caching, observability.
 
 ### Phase 6 — Hardening, testing, deployment (Week 6)
 
-Read §13, §15–§19 and `DOCKER_GUIDE.md`. **Project: production-ready the service** — typed config validated at startup; centralized error mapping; security headers + `govulncheck`; unit tests (fake repo + httptest), one testcontainers integration test, `go test -race`; multi-stage distroless Dockerfile; graceful shutdown; CI pipeline. Goals: ship something you'd be comfortable putting real users on.
+Read §14, §16–§20 and `DOCKER_GUIDE.md`. **Project: production-ready the service** — typed config validated at startup; centralized error mapping; security headers + `govulncheck`; unit tests (fake repo + httptest), one testcontainers integration test, `go test -race`; multi-stage distroless Dockerfile; graceful shutdown; CI pipeline. Goals: ship something you'd be comfortable putting real users on.
 
-### Capstone — the full §20 example, extended
+### Capstone — the full §21 example, extended
 
 Take the Users + Orders API and add: refresh-token rotation with revocation, order state machine, idempotency keys on order creation, pagination on orders, OpenTelemetry tracing, and a load test (e.g. `k6`/`vegeta`) to find and profile a bottleneck with `pprof`.
 
@@ -3329,7 +3819,7 @@ Take the Users + Orders API and add: refresh-token rotation with revocation, ord
 | golang-migrate | `pkg.go.dev/github.com/golang-migrate/migrate/v4` |
 | slog | `pkg.go.dev/log/slog` |
 | httptest | `pkg.go.dev/net/http/httptest` |
-| Companion guides | `GO_LANG_AND_PATTERNS_GUIDE.md`, `JWT_AUTH_ARGON2_GUIDE.md`, `POSTGRESQL_GUIDE.md`, `RELATIONAL_DB_DESIGN_GUIDE.md`, `REDIS_GUIDE.md`, `DOCKER_GUIDE.md`, `GO_FILESYSTEM_OS_CLI_GUIDE.md` |
+| Companion guides | `GO_LANG_AND_PATTERNS_GUIDE.md`, `GO_JWT_ARGON2_GUIDE.md`, `POSTGRESQL_GUIDE.md`, `RELATIONAL_DB_DESIGN_GUIDE.md`, `REDIS_GUIDE.md`, `DOCKER_GUIDE.md`, `GO_FILESYSTEM_OS_CLI_GUIDE.md` |
 
 ---
 
