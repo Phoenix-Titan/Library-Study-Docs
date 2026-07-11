@@ -67,6 +67,7 @@ We are building **one real-time chat application** — think a self-hosted Slack
 | Typing indicators | WebSocket | ephemeral (never persisted) | [§13](#13-presence--typing-indicators) |
 | Unread counts | REST + WS | **Ent** count vs. last-read | [§14](#14-read-receipts--unread-counts) |
 | Read receipts | WebSocket | `read_receipts` table + broadcast | [§14](#14-read-receipts--unread-counts) |
+| Pin / unpin messages | REST | Ent `pins` resource (admin-only writes) | [§9.5](#95-adding-a-restful-feature-end-to-end--message-pins) |
 | Cluster-wide broadcast | internal | **Redis pub/sub backplane** | [§15](#15-scaling-out--the-redis-pubsub-backplane--nginx) |
 
 ### 1.3 The system in one picture **[B]**
@@ -289,7 +290,8 @@ chat/
 │  │  │  ├─ rooms/                # room CRUD, membership, roles/RBAC, invites, conversations sidebar (§8–§9)
 │  │  │  ├─ messages/             # history (keyset) handler, message DTOs, the send service (§6, §9)
 │  │  │  ├─ presence/             # presence + typing state, redis TTL (§13)
-│  │  │  └─ receipts/             # read receipts + unread-count domain (§14)
+│  │  │  ├─ receipts/             # read receipts + unread-count domain (§14)
+│  │  │  └─ pins/                 # RESTful resource — pin/unpin room messages (§9.5)
 │  │  └─ platform/                # shared infrastructure — NO business logic
 │  │     ├─ config/               # godotenv + typed env config, fail-fast (§3.2)
 │  │     ├─ db/                   # the Store (one pool + Ent, §2.3) + migrate.go (goose runner, §4.6)
@@ -1868,6 +1870,391 @@ func (s *RoomService) CreateChannel(ctx context.Context, creator uuid.UUID, name
 	return room, tx.Commit()
 }
 ```
+
+### 9.5 Adding a RESTful feature end-to-end — message **pins** **[I/A]**
+
+The promise of the feature-based layout ([§3.1](#31-the-monorepo-layout)) is that a **new feature is a new folder**, not edits threaded through the whole tree. Let's prove it and, at the same time, show a clean **textbook RESTful resource** (the rest of the app's REST surface is deliberately minimal). We add **pins**: any room member can *see* a room's pinned messages, and owners/admins can *pin* and *unpin*. It is a pure REST resource — **no realtime** — which is itself the lesson: pinning is infrequent and user-initiated, so it belongs on plain HTTP, not the socket. Watch how the entire feature lives in `internal/features/pins/` plus **one** Ent schema file and **one** migration.
+
+#### What makes it RESTful
+
+A REST resource is a **noun addressed by a URL**, acted on by HTTP **verbs**, answered with the right **status codes**. Pins are a sub-resource of the room that owns them, so they nest under it: `/api/rooms/{id}/pins`.
+
+| Method & path | Action | Success | Failure |
+|---|---|---|---|
+| `GET /rooms/{id}/pins` | list the room's pins | **200** + array | 404 non-member |
+| `POST /rooms/{id}/pins` | pin a message | **201** + `Location` + item | 400 bad body · 403 not admin · 404 message not in room · 409 already pinned |
+| `GET /rooms/{id}/pins/{pinId}` | fetch one pin | **200** + item | 404 |
+| `DELETE /rooms/{id}/pins/{pinId}` | unpin | **204** (no body) | 403 · 404 |
+
+The principles on display: **nouns in the URL, never verbs** (`POST …/pins`, not `POST …/pinMessage`); the **method is the verb**; **nest** a resource under its owner; return **`201 Created` + a `Location` header** on create; **`204 No Content`** on delete; make re-creating a duplicate a **`409 Conflict`** (the unique index does this for free) rather than silently duplicating; and use the **same error envelope** as [§9.4](#94-consistent-errors-status-codes--validation). Authentication is the same JWT middleware; **authorization reuses the `rooms` feature's RBAC** — a feature calling another feature's *exported* surface, exactly the dependency direction [§24.1](#241-layering--where-logic-lives) describes.
+
+#### The vertical slice, file by file
+
+**1) The migration** — the schema changes in goose first, as always ([§4](#4-the-database-schema-via-goose-migrations)).
+
+```sql
+-- db/migrations/00006_pins.sql
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE pins (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id    uuid NOT NULL REFERENCES rooms(id)    ON DELETE CASCADE,
+    message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    pinned_by  uuid NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (room_id, message_id)   -- a message is pinned at most once per room
+);
+CREATE INDEX pins_room_created_idx ON pins (room_id, created_at DESC, id DESC);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE pins;
+-- +goose StatementEnd
+```
+
+**2) The Ent schema.** Schema files live in `ent/schema/` (that is where codegen scans), while the rest of the feature lives in `internal/features/pins/`. This is the one place a feature is not wholly in its own folder — a codegen constraint, called out honestly.
+
+```go
+// ent/schema/pin.go
+package schema
+
+import (
+	"time"
+
+	"entgo.io/ent"
+	"entgo.io/ent/schema/edge"
+	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
+	"github.com/google/uuid"
+)
+
+type Pin struct{ ent.Schema }
+
+func (Pin) Fields() []ent.Field {
+	return []ent.Field{
+		field.UUID("id", uuid.UUID{}).Default(uuid.New),
+		field.UUID("room_id", uuid.UUID{}),
+		field.UUID("message_id", uuid.UUID{}),
+		field.UUID("pinned_by", uuid.UUID{}),
+		field.Time("created_at").Default(time.Now).Immutable(),
+	}
+}
+
+func (Pin) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("room", Room.Type).Field("room_id").Unique().Required(),
+		edge.To("message", Message.Type).Field("message_id").Unique().Required(),
+		edge.To("pinner", User.Type).Field("pinned_by").Unique().Required(),
+	}
+}
+
+func (Pin) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("room_id", "message_id").Unique(), // mirrors the goose UNIQUE
+	}
+}
+```
+
+**3) DTOs** (`package pins`) — the wire shape, decoupled from the entity ([§9.2](#92-dtos--wire-shapes-separate-from-entities)).
+
+```go
+// internal/features/pins/dto.go
+package pins
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+
+	"chat/ent"
+)
+
+type PinDTO struct {
+	ID        uuid.UUID `json:"id"`
+	RoomID    uuid.UUID `json:"roomId"`
+	MessageID uuid.UUID `json:"messageId"`
+	PinnedBy  uuid.UUID `json:"pinnedBy"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type createPinRequest struct {
+	MessageID uuid.UUID `json:"messageId" binding:"required"`
+}
+
+func toDTO(p *ent.Pin) PinDTO {
+	return PinDTO{
+		ID: p.ID, RoomID: p.RoomID, MessageID: p.MessageID,
+		PinnedBy: p.PinnedBy, CreatedAt: p.CreatedAt,
+	}
+}
+```
+
+**4) The service** — the feature's Ent queries, with sentinel errors the handler maps to status codes.
+
+```go
+// internal/features/pins/service.go
+package pins
+
+import (
+	"context"
+	"errors"
+
+	"github.com/google/uuid"
+
+	"chat/ent"
+	"chat/ent/message"
+	"chat/ent/pin"
+	"chat/internal/platform/db"
+)
+
+var (
+	ErrMessageNotInRoom = errors.New("message not in room") // -> 404
+	ErrAlreadyPinned    = errors.New("already pinned")       // -> 409
+	ErrPinNotFound      = errors.New("pin not found")        // -> 404
+)
+
+type Service struct{ store *db.Store }
+
+func NewService(s *db.Store) *Service { return &Service{store: s} }
+
+// List returns a room's pins, newest first (a small, bounded set).
+func (s *Service) List(ctx context.Context, roomID uuid.UUID) ([]*ent.Pin, error) {
+	return s.store.Ent.Pin.Query().
+		Where(pin.RoomID(roomID)).
+		Order(ent.Desc(pin.FieldCreatedAt), ent.Desc(pin.FieldID)).
+		Limit(200).
+		All(ctx)
+}
+
+// Get returns one pin scoped to its room, so a foreign pinId 404s.
+func (s *Service) Get(ctx context.Context, roomID, pinID uuid.UUID) (*ent.Pin, error) {
+	p, err := s.store.Ent.Pin.Query().
+		Where(pin.ID(pinID), pin.RoomID(roomID)).
+		Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, ErrPinNotFound
+	}
+	return p, err
+}
+
+// Create pins a message. The message must belong to the room; the unique index
+// turns a re-pin into a 409 (constraint error) instead of a duplicate row.
+func (s *Service) Create(ctx context.Context, roomID, messageID, actorID uuid.UUID) (*ent.Pin, error) {
+	inRoom, err := s.store.Ent.Message.Query().
+		Where(message.ID(messageID), message.RoomID(roomID)).
+		Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !inRoom {
+		return nil, ErrMessageNotInRoom
+	}
+	p, err := s.store.Ent.Pin.Create().
+		SetRoomID(roomID).
+		SetMessageID(messageID).
+		SetPinnedBy(actorID).
+		Save(ctx)
+	if ent.IsConstraintError(err) {
+		return nil, ErrAlreadyPinned
+	}
+	return p, err
+}
+
+// Delete unpins; a missing pin (scoped to the room) is a 404.
+func (s *Service) Delete(ctx context.Context, roomID, pinID uuid.UUID) error {
+	n, err := s.store.Ent.Pin.Delete().
+		Where(pin.ID(pinID), pin.RoomID(roomID)).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPinNotFound
+	}
+	return nil
+}
+```
+
+**5) The handler** — verbs to actions, sentinels to status codes. `badRequest`/`notFound`/`serverError` are the thin helpers that wrap the [§9.4](#94-consistent-errors-status-codes--validation) error envelope.
+
+```go
+// internal/features/pins/handler.go
+package pins
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	"chat/internal/features/auth"
+	"chat/internal/features/rooms"
+	"chat/internal/platform/config"
+	"chat/internal/platform/db"
+)
+
+type Handler struct {
+	svc   *Service
+	store *db.Store
+	cfg   *config.Config
+}
+
+func NewHandler(store *db.Store, cfg *config.Config) *Handler {
+	return &Handler{svc: NewService(store), store: store, cfg: cfg}
+}
+
+// GET /rooms/:id/pins — list (any member).
+func (h *Handler) List(c *gin.Context) {
+	userID := auth.UserID(c)
+	roomID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, "bad room id")
+		return
+	}
+	// Membership gate: a non-member gets 404 — never leak that the room exists (§8.1).
+	if _, err := rooms.Get(c, h.store.Ent, roomID, userID); err != nil {
+		notFound(c)
+		return
+	}
+	list, err := h.svc.List(c, roomID)
+	if err != nil {
+		serverError(c)
+		return
+	}
+	out := make([]PinDTO, 0, len(list))
+	for _, p := range list {
+		out = append(out, toDTO(p))
+	}
+	c.JSON(http.StatusOK, gin.H{"pins": out})
+}
+
+// POST /rooms/:id/pins — pin a message (owner/admin only).
+func (h *Handler) Create(c *gin.Context) {
+	userID := auth.UserID(c)
+	roomID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, "bad room id")
+		return
+	}
+	// Authorization reuses the rooms feature's RBAC (ErrNotMember -> 404, ErrForbidden -> 403).
+	if err := rooms.RequireRole(c, h.store.Ent, roomID, userID, "owner", "admin"); err != nil {
+		writeRoomAuthErr(c, err)
+		return
+	}
+	var req createPinRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "messageId is required")
+		return
+	}
+	p, err := h.svc.Create(c, roomID, req.MessageID, userID)
+	switch {
+	case errors.Is(err, ErrMessageNotInRoom):
+		notFound(c)
+		return
+	case errors.Is(err, ErrAlreadyPinned):
+		c.JSON(http.StatusConflict, gin.H{"error": "message already pinned", "code": "ALREADY_PINNED"})
+		return
+	case err != nil:
+		serverError(c)
+		return
+	}
+	// 201 Created + a Location header pointing at the new resource — a REST staple.
+	c.Header("Location", "/api/rooms/"+roomID.String()+"/pins/"+p.ID.String())
+	c.JSON(http.StatusCreated, toDTO(p))
+}
+
+// GET /rooms/:id/pins/:pinId — fetch one (any member).
+func (h *Handler) Get(c *gin.Context) {
+	userID := auth.UserID(c)
+	roomID, err1 := uuid.Parse(c.Param("id"))
+	pinID, err2 := uuid.Parse(c.Param("pinId"))
+	if err1 != nil || err2 != nil {
+		badRequest(c, "bad id")
+		return
+	}
+	if _, err := rooms.Get(c, h.store.Ent, roomID, userID); err != nil {
+		notFound(c)
+		return
+	}
+	p, err := h.svc.Get(c, roomID, pinID)
+	if errors.Is(err, ErrPinNotFound) {
+		notFound(c)
+		return
+	}
+	if err != nil {
+		serverError(c)
+		return
+	}
+	c.JSON(http.StatusOK, toDTO(p))
+}
+
+// DELETE /rooms/:id/pins/:pinId — unpin (owner/admin only).
+func (h *Handler) Delete(c *gin.Context) {
+	userID := auth.UserID(c)
+	roomID, err1 := uuid.Parse(c.Param("id"))
+	pinID, err2 := uuid.Parse(c.Param("pinId"))
+	if err1 != nil || err2 != nil {
+		badRequest(c, "bad id")
+		return
+	}
+	if err := rooms.RequireRole(c, h.store.Ent, roomID, userID, "owner", "admin"); err != nil {
+		writeRoomAuthErr(c, err)
+		return
+	}
+	if err := h.svc.Delete(c, roomID, pinID); err != nil {
+		if errors.Is(err, ErrPinNotFound) {
+			notFound(c)
+			return
+		}
+		serverError(c)
+		return
+	}
+	c.Status(http.StatusNoContent) // 204: success, deliberately no body
+}
+
+// writeRoomAuthErr maps the rooms RBAC sentinels to status codes.
+func writeRoomAuthErr(c *gin.Context, err error) {
+	if errors.Is(err, rooms.ErrForbidden) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient role", "code": "FORBIDDEN"})
+		return
+	}
+	notFound(c) // ErrNotMember (or anything else) -> 404; don't leak room existence
+}
+```
+
+**6) The routes** — the feature declares its own URL surface; the router just mounts it.
+
+```go
+// internal/features/pins/routes.go
+package pins
+
+import "github.com/gin-gonic/gin"
+
+// RegisterRoutes mounts the pins resource, nested under its owning room, on the
+// already-authenticated group (RequireAuth is applied by the caller).
+func (h *Handler) RegisterRoutes(priv *gin.RouterGroup) {
+	g := priv.Group("/rooms/:id/pins")
+	g.GET("", h.List)             // list
+	g.POST("", h.Create)          // create -> 201
+	g.GET("/:pinId", h.Get)       // read
+	g.DELETE("/:pinId", h.Delete) // delete -> 204
+}
+```
+
+**7) Wiring** — the whole feature plugs into the app in **one line** in the router assembly ([§9.1](#91-router-assembly)):
+
+```go
+// internal/platform/httpx/router.go  (one added line)
+pins.NewHandler(store, cfg).RegisterRoutes(priv)
+```
+
+#### What you did *not* have to touch
+
+That is the payoff. To add pins you wrote one migration, one Ent schema file, and one `features/pins/` folder, then added **one line** to the router. You did **not** edit `auth`, `messages`, `presence`, `receipts`, the `ws` hub, `config`, or `main.go`. A reviewer sees a diff that is almost entirely a new folder — **change isolation** in practice. And because pins reused `rooms.RequireRole`/`rooms.Get`, you got IDOR-safe, role-gated access for free ([§8](#8-rbac--authorization--room-roles-and-idor-defense)) without re-implementing authorization.
+
+> **When to add realtime later.** Pins are REST because they are rare and awaited. If you later want other members' pin lists to update live, you don't rewrite this — you *add* a `pin.added` / `pin.removed` broadcast in `Create`/`Delete` (publish through the backplane, [§15](#15-scaling-out--the-redis-pubsub-backplane--nginx)) and a cache patch on the client ([§18.5](#18-the-frontend-websocket-client)), exactly like `message.new`. REST for the resource, an optional event for the live nicety — layered, not entangled.
 
 ---
 ## 10. Realtime with coder/websocket — The Hub Architecture
