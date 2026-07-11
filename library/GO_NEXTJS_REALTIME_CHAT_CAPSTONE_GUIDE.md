@@ -2,7 +2,7 @@
 
 > **Who this is for:** Developers who have met each tool in this stack on its own and now want to see them **composed into one real, production-shaped, banking-grade real-time chat application** — the "put it all together" reference. On the backend we run a **Go API** (Gin for HTTP, `golang-jwt/jwt` v5 + `x/crypto/argon2` for auth, **Ent** as the single type-safe data-access layer — every read and write, from the relation graph to the hot-path message queries — **goose** for migrations, **pgx v5** as the one shared connection pool, **Air** for the dev loop, and **`github.com/coder/websocket`** for realtime). On the frontend we run **Next.js 16 + React 19 + TanStack Query v5 + TypeScript**. Together they deliver the full feature set of a modern chat product: **register/login, rooms & channels, direct messages, presence, typing indicators, message history with keyset pagination, unread counts, and read receipts** — with realtime fan-out that scales across many server nodes via a **Redis pub/sub backplane**. This is an **explain-first** guide: every concept is taught in prose first (what it is, *why* the architecture pushes you this way, when to reach for it, how it works, the key parameters, best practices, and the **security implications**) and only then shown as heavily-commented, runnable code. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced. It **assumes and cross-references** the single-tool guides but is self-contained enough to follow top to bottom.
 >
-> **Version note:** Targets **Go 1.25 / 1.26**, **`github.com/gin-gonic/gin` v1.10+**, **`github.com/coder/websocket` v1.8.x**, **`entgo.io/ent` v0.14+**, **`github.com/pressly/goose/v3` v3.27+**, **`github.com/jackc/pgx/v5`**, **`golang-jwt/jwt` v5**, **`golang.org/x/crypto/argon2`**, and **Air** for live reload. Frontend: **Next.js 16 (App Router)** on **React 19**, **`@tanstack/react-query` v5**, **TypeScript 5.x**. Infra: **PostgreSQL** (Supabase or plain), **Redis 7/8**, **Nginx**, **Docker** — all current as of **2026**. Fast-moving APIs are flagged with **⚡**. The author is on **Windows 11**, so cross-platform notes (`.exe`, path separators, shells) are called out where they bite.
+> **Version note:** Targets **Go 1.25 / 1.26**, **`github.com/gin-gonic/gin` v1.10+**, **`github.com/coder/websocket` v1.8.x**, **`entgo.io/ent` v0.14+**, **`github.com/pressly/goose/v3` v3.27+**, **`github.com/jackc/pgx/v5`**, **`golang-jwt/jwt` v5**, **`golang.org/x/crypto/argon2`**, **`github.com/joho/godotenv`** (dev `.env` loading), and **Air** for live reload. Frontend: **Next.js 16 (App Router)** on **React 19**, **`@tanstack/react-query` v5**, **TypeScript 5.x**. Infra: **PostgreSQL** (Supabase or plain), **Redis 7/8**, **Nginx**, **Docker** — all current as of **2026**. Fast-moving APIs are flagged with **⚡**. The author is on **Windows 11**, so cross-platform notes (`.exe`, path separators, shells) are called out where they bite.
 >
 > **This guide's place in the library — it is the integration capstone that composes the whole Go + Next.js realtime stack.** It does not re-teach each tool from scratch; it teaches you to **wire them together** and shows the integration glue the single-tool guides leave out (one pgx pool behind a single Ent data layer with goose owning the schema, the WebSocket auth handshake from a browser, the Hub + Redis backplane, the optimistic cache with idempotent replay). Read each component guide alongside the section that uses it:
 > - [Coder WebSocket](GO_CODER_WEBSOCKETS_GUIDE.md) — the Accept/Dial API, read/write pumps, the one-reader rule, CSWSH defense.
@@ -199,7 +199,7 @@ The tempting alternative is to reach for a second tool — a query generator lik
 Here is the code that makes it real: build one `pgxpool.Pool` and hand it to Ent through `stdlib.OpenDBFromPool`. Ent's schema migration stays off because goose owns the schema.
 
 ```go
-// internal/db/db.go
+// internal/platform/db/store.go
 package db
 
 import (
@@ -282,23 +282,29 @@ One repository, two top-level apps: `/server` (Go) and `/web` (Next.js). Keeping
 chat/
 ├─ server/
 │  ├─ cmd/
-│  │  └─ api/main.go            # entrypoint: wire config→store→hub→router→http.Server
+│  │  └─ api/main.go              # composition root: config→migrate→store→redis→hub→wire features→serve
 │  ├─ internal/
-│  │  ├─ config/config.go       # typed env config, fail-fast
-│  │  ├─ db/db.go               # the Store (one pool + Ent) from §2.3
-│  │  ├─ auth/                  # argon2, jwt, refresh rotation, middleware (§7)
-│  │  ├─ rbac/                  # room-role checks (§8)
-│  │  ├─ rest/                  # gin handlers + DTOs (§9)
-│  │  ├─ ws/                    # hub, client, read/write pumps, protocol (§10–§13)
-│  │  ├─ presence/              # presence + typing, redis-backed (§13)
-│  │  └─ backplane/             # redis pub/sub fan-out (§15)
+│  │  ├─ features/                # one package per feature (vertical slices)
+│  │  │  ├─ auth/                 # argon2, jwt, refresh rotation, RequireAuth, handler + routes (§7)
+│  │  │  ├─ rooms/                # room CRUD, membership, roles/RBAC, invites, conversations sidebar (§8–§9)
+│  │  │  ├─ messages/             # history (keyset) handler, message DTOs, the send service (§6, §9)
+│  │  │  ├─ presence/             # presence + typing state, redis TTL (§13)
+│  │  │  └─ receipts/             # read receipts + unread-count domain (§14)
+│  │  └─ platform/                # shared infrastructure — NO business logic
+│  │     ├─ config/               # godotenv + typed env config, fail-fast (§3.2)
+│  │     ├─ db/                   # the Store (one pool + Ent, §2.3) + migrate.go (goose runner, §4.6)
+│  │     ├─ ws/                   # Hub, Client, serve, protocol, dispatch + send/typing/receipt handlers (§10–§14)
+│  │     ├─ backplane/            # redis pub/sub fan-out (§15)
+│  │     └─ httpx/                # gin engine bootstrap, error envelope, security headers, mounts feature routes (§9)
 │  ├─ db/
-│  │  └─ migrations/            # goose *.sql — THE schema (§4)
+│  │  └─ migrations/              # goose *.sql — THE schema (§4)
 │  ├─ ent/
-│  │  ├─ schema/                # Ent schema-as-code (§5)
-│  │  ├─ generate.go            # go:generate entc — codegen entrypoint
-│  │  └─ *.go                   # ent-generated client & builders (do not edit)
-│  ├─ .air.toml                 # dev loop (§23.6)
+│  │  ├─ schema/                  # Ent schema-as-code (§5)
+│  │  ├─ generate.go              # go:generate entc — codegen entrypoint
+│  │  └─ *.go                     # ent-generated client & builders (do not edit)
+│  ├─ .air.toml                   # dev loop (§23.5)
+│  ├─ .env                        # dev secrets, git-/docker-ignored, loaded by godotenv (§3.2)
+│  ├─ .env.example                # committed placeholder template (documentation only)
 │  ├─ Dockerfile
 │  └─ go.mod
 ├─ web/                          # Next.js 16 app (§16–§20)
@@ -310,20 +316,28 @@ chat/
 └─ nginx/chat.conf               # one-origin reverse proxy (§15.6)
 ```
 
+The backend is organized **by feature, not by technical layer**. Each package under `internal/features/` is a self-contained **vertical slice**: it owns its own HTTP handler, route registration, service/business rules, DTOs, and the Ent queries behind them. Everything you need to understand "how rooms work" is in `features/rooms/`, not scattered across a `handlers/`, a `services/`, and a `data/` directory. Cross-cutting, **domain-agnostic infrastructure** — the pool+Ent `Store`, the gin engine bootstrap, the WebSocket Hub, the Redis backplane, config loading — lives under `internal/platform/`, and features depend *downward* into it, never sideways into each other's internals.
+
+> **One honest nuance — the realtime `ws` package stays cohesive under `platform/`.** The Hub, the Client, and the per-type realtime handlers (`handleSend`/`handleTyping`/`handleReceipt`) live *together* in `platform/ws` rather than each moving into its matching feature package. The reason is coupling, not laziness: those handlers touch the Client's **unexported internals** (the bounded `out` channel, `inRoom`, the connection lifecycle), so splitting them into separate packages would force you to export that machinery and lose the encapsulation the one-reader/one-writer discipline depends on. Instead they are organized by feature *file* — `send.go`, `typing.go`, `receipt.go` — inside one `ws` package, and each delegates the actual domain work down to the shared `db.Store` and the feature services. So: **HTTP features are true separate packages; realtime handlers are feature-organized files inside the cohesive transport package.** That is the pragmatic, correct Go answer for a realtime app, and worth stating plainly rather than pretending the socket layer decomposes the same way HTTP does.
+
 > **Why `internal/`?** Go refuses to let packages outside the module import anything under `internal/`. It is a compiler-enforced "these are private implementation packages" boundary — exactly right for handlers, the hub, and auth internals you never want another module reaching into.
+>
+> **Why feature-based inside it?** The alternative — folders named for technical layers (`handlers/`, `services/`, `data/`) — scatters a single feature across five directories, so adding "invites" means editing all five and reviewing a diff that touches the whole tree. Package-by-feature gives you **change isolation**: everything for a feature sits in one folder, a new feature is a *new folder* rather than edits threaded through shared files, and the compiler's `internal`/export rules stop features reaching into each other except through the exported service surface they mean to expose. `platform/` holds only what genuinely is shared by every feature.
 
 ### 3.2 Typed configuration, fail-fast **[B/I]**
 
 Read every secret and tunable from the environment **once at boot**, into a typed struct, and **crash immediately** if anything required is missing or malformed. A server that boots with a blank JWT secret is a security incident waiting to happen; better to never start.
 
 ```go
-// internal/config/config.go
+// internal/platform/config/config.go
 package config
 
 import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -348,7 +362,12 @@ func must(key string) string {
 	return v
 }
 
+// Load reads .env (if present) then the process environment into a typed Config.
 func Load() (*Config, error) {
+	// In dev, load .env into the process env. In prod there is no .env and the
+	// real environment already holds the vars, so a missing file is not an error.
+	_ = godotenv.Load() // no-op if .env is absent
+
 	secret := must("JWT_SECRET")
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be >= 32 bytes, got %d", len(secret))
@@ -382,6 +401,8 @@ func orDefault(key, def string) string {
 
 > **Security note.** Never hardcode `JWT_SECRET` or `DATABASE_URL` in code or commit them. In prod they come from your secrets manager (Docker/K8s secrets, cloud SM). The `>= 32 bytes` check exists because an HS256 key shorter than the hash output materially weakens the signature. See [§21.9](#21-banking-grade-security-hardening).
 
+> **`.env` in development, real env vars in production.** `godotenv.Load()` reads a local **`.env`** file into the process environment at the very top of `Load()`, so a developer can keep `JWT_SECRET`, `DATABASE_URL`, and `REDIS_URL` in one file instead of exporting them by hand. That file holds real dev secrets, so it **must be in `.gitignore` and `.dockerignore`** — never commit it and never bake it into an image. Commit a **`.env.example`** with blank/placeholder values instead, as living documentation of which variables the app needs. In production there is no `.env`: the real environment already holds the vars (compose `environment:`/secrets, K8s secrets, cloud SM), and `godotenv.Load()` returning "file not found" is deliberately ignored — the process env wins either way. `godotenv` is a **dev convenience for populating env vars**, never the production secret source.
+
 ### 3.3 The entrypoint & graceful shutdown skeleton **[I]**
 
 The realtime nature of the app makes graceful shutdown *matter*: on deploy you have live WebSocket connections mid-conversation. A blunt `os.Exit` drops them with a TCP RST and users see "disconnected." Instead we: stop accepting new HTTP/WS, tell the Hub to send each client a **going-away** close frame (so the browser reconnects to a new node rather than erroring), drain in-flight, then close the pool and Redis.
@@ -400,11 +421,12 @@ import (
 	"syscall"
 	"time"
 
-	"chat/internal/config"
-	"chat/internal/db"
-	"chat/internal/backplane"
-	"chat/internal/ws"
-	"chat/internal/rest"
+	"chat/internal/features/auth"
+	"chat/internal/platform/backplane"
+	"chat/internal/platform/config"
+	"chat/internal/platform/db"
+	"chat/internal/platform/httpx"
+	"chat/internal/platform/ws"
 )
 
 func main() {
@@ -444,13 +466,18 @@ func main() {
 	}
 	defer bp.Close()
 
-	// 4) The Hub owns all live connections and rooms (§10).
-	hub := ws.NewHub(store, bp, cfg)
+	// 4) The auth service (used by both the auth feature and the WS upgrade handshake).
+	authSvc := auth.NewService(store, cfg)
+
+	// 5) The Hub owns all live connections and rooms (§10). It takes authSvc so the
+	//    WS upgrade can verify the JWT presented in the subprotocol (§10.3).
+	hub := ws.NewHub(store, bp, cfg, authSvc)
 	go hub.Run(ctx)      // the Hub's event loop
 	go bp.Consume(ctx, hub) // deliver cluster messages into this node's hub
 
-	// 5) The Gin router (REST) + the WS upgrade endpoint.
-	router := rest.NewRouter(cfg, store, hub)
+	// 6) The Gin engine: httpx bootstraps it, then asks each feature to register its
+	//    routes (auth, rooms, messages) and mounts the WS upgrade endpoint (§9.1).
+	router := httpx.NewRouter(cfg, store, authSvc, hub)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -653,7 +680,7 @@ DROP TABLE messages;
 We embed the migration files into the binary (`//go:embed`) so a deployed container needs no external files, and we run them behind a **Postgres advisory lock** so that when N app instances start during a rolling deploy, exactly one runs the migrations and the rest wait, then no-op. We use the modern goose *provider* API over a `*sql.DB` obtained from the shared pool.
 
 ```go
-// internal/db/migrate.go
+// internal/platform/db/migrate.go
 package db
 
 import (
@@ -1209,7 +1236,7 @@ Auth is the gate to everything, and it is subtle enough that we cross-reference 
 We hash into the standard **PHC string** (`$argon2id$v=19$m=…,t=…,p=…$salt$hash`) so the parameters travel with the hash and can be upgraded later without a schema change. Parameters below are a sane 2026 baseline; tune `memory` upward on capable hardware.
 
 ```go
-// internal/auth/password.go
+// internal/features/auth/password.go
 package auth
 
 import (
@@ -1274,7 +1301,7 @@ func VerifyPassword(plain, phc string) (bool, error) {
 The register handler creates the user through **Ent** (users are graph data), lowercasing email/username for the case-insensitive unique indexes, and mapping the unique-violation to a clean 409.
 
 ```go
-// internal/auth/service.go (excerpt)
+// internal/features/auth/service.go (excerpt)
 func (s *Service) Register(ctx context.Context, email, username, password string) (*ent.User, error) {
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -1299,7 +1326,7 @@ func (s *Service) Register(ctx context.Context, email, username, password string
 The access token is a signed JWT carrying the user id (`sub`), an expiry, and nothing sensitive. We sign with HS256 and — critically — **assert the algorithm on verify** to prevent `alg:none` and algorithm-confusion attacks.
 
 ```go
-// internal/auth/jwt.go
+// internal/features/auth/jwt.go
 package auth
 
 import (
@@ -1379,7 +1406,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (access str
 The refresh token is a random 256-bit opaque string. We store only `sha256(token)`. Each token belongs to a **family** (one login = one family). On refresh: look up the presented token by hash; if not found or expired → 401; if found but **already revoked** → this is a *reuse* of a rotated token, meaning it was likely stolen, so we **revoke the entire family** and force re-login; otherwise revoke the presented token and issue a new one *in the same family*.
 
 ```go
-// internal/auth/refresh.go
+// internal/features/auth/refresh.go
 package auth
 
 import (
@@ -1462,7 +1489,7 @@ func (s *Service) SetRefreshCookie(c *gin.Context, raw string) {
 REST handlers read the access token from the `Authorization: Bearer …` header, verify it, and stash the user id on the request context. Handlers then read identity from context, never from the request body.
 
 ```go
-// internal/auth/middleware.go
+// internal/features/auth/middleware.go
 func (s *Service) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
@@ -1518,8 +1545,8 @@ Even though Ent owns every read and write, authorization is enforced at **two po
 The Ent-side check, reused by every room route:
 
 ```go
-// internal/rbac/rbac.go
-package rbac
+// internal/features/rooms/rbac.go
+package rooms
 
 import (
 	"context"
@@ -1598,11 +1625,13 @@ func (s *Store) RoomHistoryAuthz(ctx context.Context, roomID, userID uuid.UUID, 
 Role changes and deletions run through Ent with explicit guards. The two rules that trip people up: you cannot remove or demote the **last owner** (or the room becomes unmanageable), and an `admin` cannot grant or revoke `owner` (privilege-escalation defense — only an owner mints owners).
 
 ```go
+// RemoveMember lives in package rooms alongside rbac.go, so the role checks are
+// called without a package qualifier.
 func (s *RoomService) RemoveMember(ctx context.Context, roomID, actorID, targetID uuid.UUID) error {
-	if err := rbac.RequireRole(ctx, s.ent, roomID, actorID, "owner", "admin"); err != nil {
+	if err := RequireRole(ctx, s.ent, roomID, actorID, "owner", "admin"); err != nil {
 		return err
 	}
-	target, err := rbac.Get(ctx, s.ent, roomID, targetID)
+	target, err := Get(ctx, s.ent, roomID, targetID)
 	if err != nil {
 		return err
 	}
@@ -1630,61 +1659,85 @@ REST carries everything the user initiates and can await: auth, room CRUD, membe
 
 ### 9.1 Router assembly **[I]**
 
-We group routes by auth requirement: a public group (register/login/refresh) and a protected group behind `RequireAuth`. The WS upgrade route is separate because it authenticates differently ([§10.3](#10-realtime-with-coderwebsocket--the-hub-architecture)).
+The router lives in `platform/httpx` — it is **pure transport wiring** and owns no business rules. It bootstraps the gin engine, applies the global middleware, builds one public group and one `RequireAuth`-protected group, and then hands those groups to **each feature** so the feature can mount *its own* routes. There is no monolithic `Handlers` struct any more: each feature owns a small `Handler` with a `RegisterRoutes` method, so a feature's endpoints are declared next to the code that serves them. The WS upgrade route is separate because it authenticates differently ([§10.3](#10-realtime-with-coderwebsocket--the-hub-architecture)).
 
 ```go
-// internal/rest/router.go
-package rest
+// internal/platform/httpx/router.go
+package httpx
 
 import (
 	"github.com/gin-gonic/gin"
-	"chat/internal/auth"
-	"chat/internal/config"
-	"chat/internal/db"
-	"chat/internal/ws"
+
+	"chat/internal/features/auth"
+	"chat/internal/features/messages"
+	"chat/internal/features/rooms"
+	"chat/internal/platform/config"
+	"chat/internal/platform/db"
+	"chat/internal/platform/ws"
 )
 
-func NewRouter(cfg *config.Config, store *db.Store, hub *ws.Hub) *gin.Engine {
+// NewRouter bootstraps the engine, applies global middleware, and lets every
+// feature register its own routes onto the public and RequireAuth-protected
+// groups. httpx knows nothing about any feature's rules — it only wires transport.
+func NewRouter(cfg *config.Config, store *db.Store, authSvc *auth.Service, hub *ws.Hub) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), RequestLogger(), CORS(cfg.AllowedOrigins), SecurityHeaders())
 
-	authSvc := auth.NewService(store, cfg)
-	h := &Handlers{store: store, auth: authSvc, hub: hub, cfg: cfg}
-
 	api := r.Group("/api")
-	{
-		pub := api.Group("/auth")
-		pub.POST("/register", h.Register)
-		pub.POST("/login", RateLimit(5, time.Minute), h.Login) // throttle credential stuffing
-		pub.POST("/refresh", h.Refresh)
-		pub.POST("/logout", h.Logout)
+	pub := api.Group("/auth")       // unauthenticated: register/login/refresh/logout
+	priv := api.Group("")           // everything else sits behind RequireAuth
+	priv.Use(authSvc.RequireAuth())
 
-		p := api.Group("")
-		p.Use(authSvc.RequireAuth())
-		p.GET("/me", h.Me)
-		p.GET("/conversations", h.ListConversations)     // sidebar (Ent + raw modifier)
-		p.POST("/rooms", h.CreateRoom)                    // Ent
-		p.GET("/rooms/:id", h.GetRoom)                    // Ent + membership
-		p.GET("/rooms/:id/messages", h.ListMessages)      // Ent keyset
-		p.POST("/rooms/:id/members", h.AddMember)         // Ent + RBAC
-		p.DELETE("/rooms/:id/members/:uid", h.RemoveMember)
-		p.POST("/dms/:userId", h.OpenDM)                  // find-or-create dm room
-		p.POST("/rooms/:id/read", h.MarkRead)             // read receipt (also over WS)
-	}
+	// Each feature builds its handler and mounts its own routes (vertical slice).
+	auth.NewHandler(authSvc, cfg).RegisterRoutes(pub, priv)
+	rooms.NewHandler(store).RegisterRoutes(priv)
+	messages.NewHandler(store).RegisterRoutes(priv)
 
-	// The WebSocket upgrade — auth handled inside via subprotocol (§10.3).
-	r.GET("/ws", h.ServeWS)
+	// The WebSocket upgrade — transport, mounted directly on the engine. Auth is
+	// handled inside via the subprotocol handshake (§10.3), not RequireAuth.
+	r.GET("/ws", hub.ServeWS)
 	return r
 }
 ```
+
+Each feature declares its routes in its own package. The exact paths, methods, middleware, and hints (`// Ent keyset`) are unchanged — they have just moved next to the handlers that serve them:
+
+```go
+// internal/features/auth/routes.go — package auth
+func (h *Handler) RegisterRoutes(pub, priv *gin.RouterGroup) {
+	pub.POST("/register", h.Register)
+	pub.POST("/login", RateLimit(5, time.Minute), h.Login) // throttle credential stuffing
+	pub.POST("/refresh", h.Refresh)
+	pub.POST("/logout", h.Logout)
+	priv.GET("/me", h.Me)
+}
+
+// internal/features/rooms/routes.go — package rooms
+func (h *Handler) RegisterRoutes(priv *gin.RouterGroup) {
+	priv.GET("/conversations", h.ListConversations)      // sidebar (Ent + raw modifier)
+	priv.POST("/rooms", h.CreateRoom)                    // Ent
+	priv.GET("/rooms/:id", h.GetRoom)                    // Ent + membership
+	priv.POST("/rooms/:id/members", h.AddMember)         // Ent + RBAC
+	priv.DELETE("/rooms/:id/members/:uid", h.RemoveMember)
+	priv.POST("/dms/:userId", h.OpenDM)                  // find-or-create dm room
+}
+
+// internal/features/messages/routes.go — package messages
+func (h *Handler) RegisterRoutes(priv *gin.RouterGroup) {
+	priv.GET("/rooms/:id/messages", h.ListMessages)      // Ent keyset
+	priv.POST("/rooms/:id/read", h.MarkRead)             // read receipt (also over WS)
+}
+```
+
+Splitting the old `Handlers` god-struct into `auth.Handler`, `rooms.Handler`, and `messages.Handler` is the concrete payoff of the feature layout: the handler, its routes, its DTOs, and its Ent queries all live in one package, and `httpx` depends *down* on the features (importing them to wire routes) while no feature depends on `httpx`. The login throttle `RateLimit` is a small shared middleware; the global `RequestLogger`/`CORS`/`SecurityHeaders` live in `platform/httpx`.
 
 ### 9.2 DTOs — wire shapes separate from entities **[I]**
 
 Never serialize an Ent entity straight to the client. Define explicit **DTOs**: they are the public contract, they omit sensitive fields (`password_hash`!), and they decouple the API from internal schema changes. The same field names appear in the TypeScript types ([§17](#17-frontend-rest-data-layer-with-tanstack-query)).
 
 ```go
-// internal/rest/dto.go
-package rest
+// internal/features/messages/dto.go
+package messages
 
 import (
 	"time"
@@ -1720,8 +1773,8 @@ type HistoryPageDTO struct {
 The cursor is **opaque** to the client — we base64-encode `created_at|id` so the frontend treats it as a token and can't fabricate positions. The handler decodes it, runs the Ent authz'd query ([§8.2](#8-rbac--authorization--room-roles-and-idor-defense)), and emits the next cursor from the last row.
 
 ```go
-// internal/rest/messages.go
-func (h *Handlers) ListMessages(c *gin.Context) {
+// internal/features/messages/handler.go — package messages
+func (h *Handler) ListMessages(c *gin.Context) {
 	userID := auth.UserID(c)
 	roomID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -1765,18 +1818,19 @@ func encodeCursor(t time.Time, id uuid.UUID) string {
 }
 ```
 
-> **Note — the empty membership result is the 404.** Because `ListRoomHistoryAuthz` returns zero rows for a non-member, a naive handler would return an empty page (200) instead of 404. For a private room you may prefer to first assert membership via `rbac.Get` and 404 if absent, *then* query. We do the explicit check on `GetRoom` and rely on the in-query guard for the message list; pick one policy and apply it consistently ([§8.2](#8-rbac--authorization--room-roles-and-idor-defense)).
+> **Note — the empty membership result is the 404.** Because `ListRoomHistoryAuthz` returns zero rows for a non-member, a naive handler would return an empty page (200) instead of 404. For a private room you may prefer to first assert membership via `rooms.Get` and 404 if absent, *then* query. We do the explicit check on `GetRoom` and rely on the in-query guard for the message list; pick one policy and apply it consistently ([§8.2](#8-rbac--authorization--room-roles-and-idor-defense)).
 
 ### 9.4 Consistent errors, status codes & validation **[I]**
 
 Every error response uses one envelope `{ "error": "message", "code": "SNAKE_CASE" }` so the frontend can branch on `code` while showing `error`. Status codes are disciplined: 400 validation, 401 unauthenticated, 403 authenticated-but-forbidden, 404 not-found/not-a-member, 409 conflict, 422 semantic validation, 429 rate-limited, 500 server. Binding uses Gin's `ShouldBindJSON` with `binding` tags for structural validation, and we add semantic checks (e.g., "can't DM yourself") in the handler.
 
 ```go
+// internal/features/rooms/handler.go — package rooms
 type createRoomReq struct {
 	Name string `json:"name" binding:"required,min=1,max=80"`
 }
 
-func (h *Handlers) CreateRoom(c *gin.Context) {
+func (h *Handler) CreateRoom(c *gin.Context) {
 	var req createRoomReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error(), "code": "VALIDATION"})
@@ -1845,7 +1899,7 @@ When a message is persisted, the Hub looks up the room's client set and enqueues
 ### 10.2 The Hub implementation **[A]**
 
 ```go
-// internal/ws/hub.go
+// internal/platform/ws/hub.go
 package ws
 
 import (
@@ -1853,15 +1907,17 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"chat/internal/backplane"
-	"chat/internal/config"
-	"chat/internal/db"
+	"chat/internal/features/auth"
+	"chat/internal/platform/backplane"
+	"chat/internal/platform/config"
+	"chat/internal/platform/db"
 )
 
 type Hub struct {
 	store *db.Store
 	bp    *backplane.Backplane
 	cfg   *config.Config
+	auth  *auth.Service // verifies the JWT presented on the WS upgrade (§10.3)
 
 	clients    map[*Client]struct{}
 	rooms      map[uuid.UUID]map[*Client]struct{} // roomID → subscribers on THIS node
@@ -1881,9 +1937,9 @@ type roomFrame struct {
 	skip  *Client
 }
 
-func NewHub(store *db.Store, bp *backplane.Backplane, cfg *config.Config) *Hub {
+func NewHub(store *db.Store, bp *backplane.Backplane, cfg *config.Config, authSvc *auth.Service) *Hub {
 	return &Hub{
-		store: store, bp: bp, cfg: cfg,
+		store: store, bp: bp, cfg: cfg, auth: authSvc,
 		clients:    make(map[*Client]struct{}),
 		rooms:      make(map[uuid.UUID]map[*Client]struct{}),
 		byUser:     make(map[uuid.UUID]map[*Client]struct{}),
@@ -1967,7 +2023,7 @@ Browsers **cannot** set an `Authorization` header on a WebSocket handshake, so w
 The client sends two subprotocols: a marker (`"chat.v1"`) and `"bearer.<accessJWT>"`. The server verifies the JWT, and — importantly — **must echo back an accepted subprotocol** or the browser rejects the connection. We echo `"chat.v1"`.
 
 ```go
-// internal/ws/serve.go
+// internal/platform/ws/serve.go
 package ws
 
 import (
@@ -1979,7 +2035,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *Handlers) ServeWS(c *gin.Context) {
+// ServeWS is the WS upgrade endpoint. It hangs off the Hub (transport lives with
+// the Hub), verifies the JWT from the subprotocol, and registers a new Client.
+func (h *Hub) ServeWS(c *gin.Context) {
 	// Pull the bearer token out of the requested subprotocols. coder/websocket
 	// has no Subprotocols() helper (that is a gorilla API), so parse the
 	// comma-separated Sec-WebSocket-Protocol request header ourselves.
@@ -2007,18 +2065,19 @@ func (h *Handlers) ServeWS(c *gin.Context) {
 	conn.SetReadLimit(h.cfg.MaxMessageBytes + 512) // envelope overhead headroom
 
 	// Load the user's room memberships so the Hub knows what topics to subscribe.
-	rooms, err := h.rooms.RoomIDsForUser(c, claims.UserID)
+	// RoomIDsForUser is a data-layer query on the shared Store (like InsertMessage).
+	rooms, err := h.store.RoomIDsForUser(c, claims.UserID)
 	if err != nil {
 		conn.Close(websocket.StatusInternalError, "load rooms")
 		return
 	}
 
-	client := newClient(h.hub, conn, claims.UserID, rooms, h.cfg.MaxMessageBytes)
-	h.hub.register <- client
+	client := newClient(h, conn, claims.UserID, rooms, h.cfg.MaxMessageBytes)
+	h.register <- client
 
-	// Run the two pumps. serveWS returns when the connection ends.
+	// Run the two pumps. ServeWS returns when the connection ends.
 	client.run(c.Request.Context())
-	h.hub.unregister <- client
+	h.unregister <- client
 }
 ```
 
@@ -2040,7 +2099,7 @@ OriginPatterns: []string{"chat.example.com", "localhost:3000"},
 Each `Client` runs exactly two goroutines. The **read pump** is the single reader (`coder/websocket` allows only one reader at a time) — it reads envelopes and hands them to the Hub/handlers. The **write pump** is the single writer — it drains the bounded `out` channel and also sends periodic **Pings** to detect dead peers. Backpressure is enforced by the *bounded* `out` channel: if the Hub can't enqueue because the buffer is full, that client is a **slow consumer** and gets evicted ([§10.2](#10-realtime-with-coderwebsocket--the-hub-architecture) `send`).
 
 ```go
-// internal/ws/client.go
+// internal/platform/ws/client.go
 package ws
 
 import (
@@ -2163,7 +2222,7 @@ Before the send flow we pin down the **wire protocol**: one envelope, a fixed vo
 Every frame in either direction is a JSON object with the same top-level fields. Keeping the shape identical in both directions means one parser, one type, one mental model.
 
 ```go
-// internal/ws/protocol.go
+// internal/platform/ws/protocol.go
 package ws
 
 import (
@@ -2236,7 +2295,7 @@ When a `message.send` envelope arrives on a client's read pump, the server:
 `Hub.dispatch` routes an envelope by `Type` to the right handler. It is the server-side mirror of the protocol table.
 
 ```go
-// internal/ws/dispatch.go
+// internal/platform/ws/dispatch.go
 package ws
 
 import (
@@ -2265,7 +2324,7 @@ func (h *Hub) dispatch(ctx context.Context, c *Client, env *Envelope) {
 This is the code that ties everything together. Read the comments — every numbered step from [§12.1](#12-the-message-send-flow-end-to-end) is here.
 
 ```go
-// internal/ws/send.go
+// internal/platform/ws/send.go
 package ws
 
 import (
@@ -2374,7 +2433,7 @@ A message is a durable fact: it happened, it must survive forever, and correctne
 Typing is the simplest realtime feature and a good warm-up: it is a **pass-through broadcast** with zero persistence. When a client sends `typing.start`, the server verifies membership and rebroadcasts `typing.start` (carrying the typist's `user_id`) to the *other* members of the room. The frontend shows the indicator and auto-clears it after a couple of seconds if no further `typing.start` arrives, so a dropped `typing.stop` never leaves a stuck indicator.
 
 ```go
-// internal/ws/typing.go
+// internal/platform/ws/typing.go
 package ws
 
 import (
@@ -2418,7 +2477,7 @@ Presence must answer "is user U online *anywhere in the cluster*?" No single nod
 - On disconnect, the node checks whether the user still has *any* local connection; if not, it does **not** immediately mark them offline (another node might have them) — it lets the Redis TTL decide. When the key finally expires (no node refreshed it), a keyspace-notification or a lazy check on next read declares them offline and publishes `presence.update{status:"offline"}`.
 
 ```go
-// internal/presence/presence.go
+// internal/features/presence/presence.go
 package presence
 
 import (
@@ -2519,7 +2578,7 @@ Moving the pointer is monotonic (forward only) — scrolling up and back down mu
 A client marks read when the newest message becomes visible at the bottom of the viewport. It can do so two ways, and we support both: a REST `POST /rooms/:id/read` (reliable, used on initial open and on blur) and a `receipt.read` WebSocket frame (instant, used while actively viewing). Both funnel into the same service method, which updates the pointer, upserts the receipt, and broadcasts `receipt.read` to the room so other members' "seen" state updates live.
 
 ```go
-// internal/ws/receipt.go
+// internal/platform/ws/receipt.go
 package ws
 
 import (
@@ -2606,7 +2665,7 @@ A subtlety: node A publishes *and* subscribes, so node A receives its **own** pu
 We subscribe to a **single pattern** `room:*` rather than managing per-room subscribe/unsubscribe churn as clients come and go. For very high room counts you'd switch to targeted `SUBSCRIBE`/`UNSUBSCRIBE` keyed by which rooms a node actually holds; the pattern approach is simpler and fine to a large scale because a node ignores messages for rooms it has no local subscribers in.
 
 ```go
-// internal/backplane/backplane.go
+// internal/platform/backplane/backplane.go
 package backplane
 
 import (
@@ -2691,7 +2750,7 @@ func (b *Backplane) Close() error { return b.rdb.Close() }
 And the Hub grows a `FanoutLocal` that respects `skipUser` (skipping *all* of a user's local connections for typing/receipts):
 
 ```go
-// internal/ws/hub.go (addition)
+// internal/platform/ws/hub.go (addition)
 func (h *Hub) FanoutLocal(room uuid.UUID, data []byte, skipUser uuid.UUID) {
 	h.broadcast <- roomFrame{room: room, data: data, skipUserID: skipUser}
 }
@@ -3580,7 +3639,7 @@ export function RoomHeader({ room, myRole }: { room: Room; myRole: Role }) {
 
 Route-level guards (the chat layout in [§16.3](#16-nextjs-frontend--setup--auth)) redirect the unauthenticated. For role-gated *views* (e.g., a room-settings page), the component checks the role and renders a "not allowed" state if it's insufficient — but again, the settings *mutations* are also blocked server-side. Default to **failing closed**: if the role is unknown/loading, render nothing rather than the privileged UI, so a slow role fetch never briefly flashes an admin button to a member.
 
-> **Best practice — keep the two tables in sync deliberately.** `web/lib/rbac.ts` (client) and `internal/rbac` (server) encode the same permission matrix. When you change one, change the other in the same PR, and let the server be the one that's *tested* ([§22](#22-observability--testing)). Drift here is only a UX bug (a button shows that shouldn't), never a security bug, because the server enforces regardless — but it's still worth keeping tidy. [§24](#24-maintainability--contracts--keeping-tools-in-sync) covers contract-sync discipline.
+> **Best practice — keep the two tables in sync deliberately.** `web/lib/rbac.ts` (client) and `internal/features/rooms` (server, `rbac.go`) encode the same permission matrix. When you change one, change the other in the same PR, and let the server be the one that's *tested* ([§22](#22-observability--testing)). Drift here is only a UX bug (a button shows that shouldn't), never a security bug, because the server enforces regardless — but it's still worth keeping tidy. [§24](#24-maintainability--contracts--keeping-tools-in-sync) covers contract-sync discipline.
 
 ---
 
@@ -3633,7 +3692,7 @@ The refresh token is an HttpOnly cookie, which the browser sends automatically �
 Every response carries a hardened header set (middleware in [§9.1](#9-the-rest-api-with-gin), and Next.js config for the app shell):
 
 ```go
-// internal/rest/security_headers.go
+// internal/platform/httpx/security.go — package httpx
 func SecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := c.Writer.Header()
@@ -3702,10 +3761,10 @@ Wrap the send handler and history query with timers; alert on p99 `message_persi
 REST handlers test cleanly with `net/http/httptest` against the Gin router, using a real (throwaway) Postgres so the Ent queries actually run. The pattern: build the router with a test `Store`, issue a request, assert status + body.
 
 ```go
-// internal/rest/messages_test.go
+// internal/features/messages/handler_test.go
 func TestListMessages_NonMemberGets404(t *testing.T) {
 	store := testStore(t)            // spins a temp DB, runs goose migrations
-	router := NewRouter(testCfg, store, testHub(t))
+	router := httpx.NewRouter(testCfg, store, testAuth(t), testHub(t))
 
 	alice := seedUser(t, store, "alice")
 	bob := seedUser(t, store, "bob")
@@ -3728,13 +3787,13 @@ func TestListMessages_NonMemberGets404(t *testing.T) {
 The realtime path is testable end-to-end by starting the real server with `httptest.NewServer` and **dialing** it with `coder/websocket`'s `Dial`. This exercises the actual Accept, subprotocol auth, Hub registration, and broadcast — not mocks. The canonical test: two clients in a room, one sends, the other receives.
 
 ```go
-// internal/ws/send_test.go
+// internal/platform/ws/send_test.go
 func TestBroadcast_TwoClients(t *testing.T) {
 	store := testStore(t)
-	hub := NewHub(store, testBackplane(t), testCfg)
+	hub := NewHub(store, testBackplane(t), testCfg, testAuth(t))
 	go hub.Run(context.Background())
 
-	srv := httptest.NewServer(NewRouter(testCfg, store, hub))
+	srv := httptest.NewServer(httpx.NewRouter(testCfg, store, testAuth(t), hub))
 	defer srv.Close()
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
 
@@ -3782,7 +3841,7 @@ func dial(t *testing.T, url, token string) *websocket.Conn {
 To test a query in isolation without polluting the database, run each test inside an **Ent transaction** and **roll it back** at the end — never commit. An `*ent.Tx` exposes the same builders as the client, so the code under test runs unchanged and nothing persists. This makes DB tests fast and hermetic — no cleanup, perfect isolation, parallelizable.
 
 ```go
-// internal/db/tx_test.go
+// internal/platform/db/tx_test.go
 func TestInsertMessage_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	tx, err := testStore.Ent.Tx(ctx)
@@ -3934,7 +3993,7 @@ Either way, **migrations must be backward-compatible with the currently-running 
 
 ### 23.5 The `.air.toml` dev loop with codegen **[A]**
 
-In development, Air watches for changes and rebuilds. We hook Ent codegen in so editing an Ent schema regenerates the client before the rebuild; `goose up` runs at app start via `MigrateUp`. One code generator, one regen step — the single-tool payoff from [§2.2](#22-why-ent-for-everything--an-honest-accounting).
+In development, Air watches for changes and rebuilds. We hook Ent codegen in so editing an Ent schema regenerates the client before the rebuild; `goose up` runs at app start via `MigrateUp`. One code generator, one regen step — the single-tool payoff from [§2.2](#22-why-ent-for-everything--an-honest-accounting). No special Air wiring is needed for secrets: `config.Load` calls `godotenv.Load()` at startup ([§3.2](#3-project-layout-config--graceful-shutdown)), so each rebuilt binary reads the local `.env` (git-/docker-ignored) automatically.
 
 ```toml
 # server/.air.toml
@@ -3978,13 +4037,15 @@ This system has more moving parts than a single-tool app, so maintainability is 
 
 ### 24.1 Layering & where logic lives **[I]**
 
-Each layer has one job, and dependencies point one direction (handlers → services → data; never back):
+The code is organized **by feature, not by technical layer** ([§3.1](#3-project-layout-config--graceful-shutdown)). Each package under `internal/features/` is a self-contained **vertical slice** — its own HTTP handler, route registration, service/business rules, DTOs, and Ent queries — and within a slice the dependencies still point one direction (handler → service → Ent), never back:
 
-- **Transport** (`rest/` handlers, `ws/` dispatch) — parse/validate input, call a service, shape the response/envelope. No business rules here beyond validation.
-- **Services** (`auth/`, `rbac/`, room service) — the business rules: authorization, the last-owner guard, DM find-or-create, refresh rotation. This is where invariants live and what tests target.
-- **Data** (`ent/` + `db/` — Ent over the one pool, goose owning the schema) — queries and migrations only, no business logic.
+- **`features/auth`** — argon2, JWT, refresh rotation, `RequireAuth`, and the auth HTTP handler. Owns the credential and token invariants.
+- **`features/rooms`** — room CRUD, membership, the role/RBAC checks (the old `rbac.go`), invites, the conversations sidebar. Owns the last-owner guard, DM find-or-create, and every authorization rule.
+- **`features/messages`** — keyset history handler, message DTOs, and the send service the realtime path calls.
+- **`features/presence` / `features/receipts`** — the ephemeral presence/typing domain and the read-receipt/unread domain.
+- **`platform/*`** — shared, domain-agnostic infrastructure only: the `db.Store` (Ent over one pool, goose owning the schema), the `httpx` engine/middleware, the `ws` Hub, the Redis `backplane`, and `config`. **No business rules live here.**
 
-The realtime handlers are just another transport that calls the same services — the send handler ([§12.3](#12-the-message-send-flow-end-to-end)) validates then persists via the data layer exactly as a REST handler would. Keeping the Hub thin (routing + fan-out) and pushing rules into services means realtime and REST can't diverge in behavior.
+Dependencies point **down into `platform/`**, and features do **not** reach into each other's internals — they collaborate only through **exported services** (for example, the realtime send path in `platform/ws` calls the shared `db.Store` and the messages/rooms membership checks, never a feature's unexported types). The one deliberate exception, explained in [§3.1](#3-project-layout-config--graceful-shutdown), is that the realtime handlers (`handleSend`/`handleTyping`/`handleReceipt`) live *inside* `platform/ws` as feature-named files rather than as separate packages, because they are tightly coupled to the `Client`'s unexported internals; they still delegate all domain work downward. Keeping the Hub thin (routing + fan-out) and pushing rules into feature services means realtime and REST can't diverge in behavior — the send handler ([§12.3](#12-the-message-send-flow-end-to-end)) validates then persists through the same `db.Store` a REST handler would.
 
 ### 24.2 The TS↔Go contract **[I/A]**
 
