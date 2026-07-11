@@ -2258,6 +2258,156 @@ The catch is **replication lag**: a replica is milliseconds-to-seconds behind, s
 
 The performance tools from earlier sections, as a decision list: **batch** (§11) when you have many separate statements and latency dominates; **`CopyFrom`** (§12) for bulk homogeneous inserts; **prepared statements** (§13, automatic) for repeated queries; **`= ANY($1)`** (§5.5) instead of N-placeholder `IN` lists; and always **`SELECT` only the columns you need** — `SELECT *` ships bytes you'll discard and defeats covering indexes. Profile with `EXPLAIN (ANALYZE, BUFFERS)` (see the [PostgreSQL guide](POSTGRESQL_GUIDE.md)) before optimizing — the bottleneck is usually a missing index, not the driver.
 
+### 22.5 A high-traffic pooling playbook **[A]**
+
+§22.1–§22.4 gave you the knobs and the rules in isolation. This is the consolidated, do-this-in-order playbook for pooling a service under real load — the saturation model, the sizing math, the connection budget, PgBouncer, warmup, and the alerts — because at high traffic the pool is the part that fails first, and it fails in ways that look like "the database is slow" when it isn't.
+
+#### 22.5.1 The saturation model — what a full pool actually does **[A]**
+
+You cannot tune a pool without knowing its behavior at the limit. `pgxpool` has a fixed `MaxConns`. When **every** connection is checked out and another goroutine issues a query, that goroutine **blocks inside the pool's internal `Acquire`** until either a connection frees up **or its context deadline fires**. There is no separate "acquire timeout" setting — **the acquire wait is bounded by the `ctx` you pass, and nothing else.** This single fact drives every high-traffic decision:
+
+```go
+func (s *Store) GetAccount(ctx context.Context, id int64) (Account, error) {
+	// Under load, if all MaxConns are checked out, THIS call blocks inside the
+	// pool waiting for a free connection — up to ctx's deadline, then it returns
+	// context.DeadlineExceeded. There is no acquire-timeout knob; the deadline on
+	// ctx IS the acquire timeout. So: give every request a bounded context (§15),
+	// and a saturated pool sheds load cleanly instead of hanging goroutines forever.
+	rows, err := s.pool.Query(ctx, "SELECT id, owner, email, balance, created_at::text FROM accounts WHERE id = $1", id)
+	if err != nil {
+		return Account{}, err
+	}
+	acc, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[Account])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, ErrAccountNotFound
+	}
+	return acc, err
+}
+```
+
+This behavior is a **feature**: the pool is a bounded queue in front of Postgres. When traffic exceeds capacity, requests queue for a connection and then shed (with `DeadlineExceeded`) once they wait past their deadline — which is far healthier than letting unbounded concurrent queries pile onto the database and collapse it. Two obligations follow: **(1)** every request must carry a deadline-bearing context (the request context in a Gin handler, §15.3), so overload turns into fast 503s instead of hung goroutines; **(2)** the "requests are waiting for a connection" signal is `pool.Stat().EmptyAcquireCount()` climbing and `AcquireDuration()` rising — those are your saturation alarms (§22.5.5).
+
+#### 22.5.2 Sizing with Little's Law — the number is small **[A]**
+
+The instinct to set `MaxConns = 200` for a busy service is almost always wrong. The correct size comes from **Little's Law**: the average number of in-flight queries is the arrival rate times the service time.
+
+> **L = λ × W** — where **L** = concurrent queries (≈ the connections you need), **λ** = queries per second, **W** = average query duration in seconds.
+
+Worked example. Your service does **2,000 queries/sec** and the average query takes **5 ms**:
+
+```text
+L = λ × W = 2000 /s × 0.005 s = 10 concurrent queries
+```
+
+Ten. Not two hundred. A `MaxConns` of **16** (10 plus ~60% burst headroom) serves that load with room to spare. The counterintuitive lesson: **connection count is driven by query *speed*, not request *volume*.** If a pool feels too small, the first fix is usually **make the queries faster** (an index, fewer round-trips) — halving W halves the connections you need — not adding connections, because each added connection is a Postgres backend process competing for the same CPU and locks. Past the CPU-core count, more connections make throughput *worse* (§22.1). Size for the **average**; let the pool's queue (§22.5.1) absorb bursts, and only raise `MaxConns` when `EmptyAcquireCount` climbs *while Postgres still has spare CPU*.
+
+#### 22.5.3 The connection budget — allocate top-down **[A]**
+
+Postgres enforces a hard **`max_connections`** (default 100; commonly raised to 200–500). Every connection is a backend **process** costing ~5–10 MB of server RAM, so you cannot simply crank it up. Budget from the server down, not from each app up:
+
+| Layer | Quantity | Note |
+|---|---|---|
+| Postgres `max_connections` | e.g. 200 | Hard ceiling. Raising it costs RAM and doesn't fix contention. |
+| − reserved | ~15 | `superuser_reserved_connections`, replication slots, monitoring, `psql`, migrations. |
+| = usable by apps | ~185 | Everything your services share. |
+| ÷ app instances | 10 instances | **The multiplier trap:** per-instance `MaxConns` × instances must fit here. |
+| → per-instance `MaxConns` | **≤ 18** | 10 × 18 = 180 < 185. ✅ 10 × 20 = 200 > 185 → connection-refused storms under load. ❌ |
+
+The failure this prevents is brutal and common: ten instances each configured `MaxConns = 20` quietly agree to open 200 backends against a 200-limit server, leaving zero headroom for `psql`, a migration, or an autoscale event — and the next connection attempt gets `FATAL: sorry, too many clients already`, cascading into failed deploys and health checks. **Per-instance `MaxConns` is a fraction of the server budget, and you must divide by the instance count** (including the extra instances that exist momentarily during a rolling deploy). When that math forces per-instance `MaxConns` uncomfortably low, that is precisely the signal to add PgBouncer.
+
+#### 22.5.4 PgBouncer for real scale — decouple client count from server count **[A]**
+
+When app concurrency (instances × `MaxConns`) genuinely needs to exceed what Postgres can hold — thousands of clients, serverless functions, many services — put **PgBouncer** in transaction-pooling mode between them. PgBouncer multiplexes a large number of cheap client connections onto a **small** set of real Postgres connections, handed out per transaction:
+
+```ini
+; pgbouncer.ini — transaction pooling: the scalable default.
+[pgbouncer]
+pool_mode = transaction
+; PgBouncer holds only THIS many real Postgres connections per database, no matter
+; how many app clients connect. THIS is the number that must fit max_connections.
+default_pool_size = 20
+; Room for many cheap client-side connections fanning into that small server pool.
+max_client_conn = 5000
+```
+
+The budget now inverts: your app pools connect to **PgBouncer** (connecting there is cheap, so per-instance `MaxConns` can be generous), while **Postgres only ever sees `default_pool_size` connections** per database. You've decoupled "how many clients" from "how many backends." Two rules make it work with pgx:
+
+1. **Set `pgx.QueryExecModeExec`** (§13.3). Transaction pooling breaks per-connection prepared statements — this is the #1 "works locally, `prepared statement does not exist` in prod" bug, and it exists *because* prod added the pooler.
+2. **Don't use session-level features across transactions** — `LISTEN/NOTIFY` (§14), session `SET`, advisory locks, and `WITH HOLD` cursors need session pooling or a dedicated direct connection, since transaction pooling can move you to a different backend between transactions.
+
+Rule of thumb: **direct-connect until the connection budget (§22.5.3) forces your hand, then PgBouncer transaction mode + `QueryExecModeExec`.**
+
+#### 22.5.5 Warmup, connection storms, and monitoring **[A]**
+
+Two operational hazards remain, both around *change*:
+
+**Cold-start connection storms.** A freshly deployed instance starts with an empty pool. The first burst of traffic makes it open many connections *at once* — and during a rolling deploy, every new instance does this simultaneously, slamming Postgres (or a just-restarted database that's still warming its caches) with a synchronized connection storm. Mitigate with `MinConns` (pre-warm a floor so the first requests don't each pay a connect+TLS handshake and the ramp isn't from zero) and `MaxConnLifetimeJitter` (so the batch of connections opened together doesn't later *expire* together and reconnect in lockstep):
+
+```go
+func newHighTrafficPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg.MaxConns = 16              // from Little's Law (§22.5.2), not guessed high
+	cfg.MinConns = 4               // pre-warm a floor: no from-zero storm, no cold first-request latency
+	cfg.MaxConnLifetime = 30 * time.Minute
+	cfg.MaxConnLifetimeJitter = 5 * time.Minute // desynchronize expiry so reconnects don't thunder
+	cfg.MaxConnIdleTime = 15 * time.Minute
+	cfg.HealthCheckPeriod = 30 * time.Second    // the sweep that retires stale conns & maintains MinConns
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec // if behind a txn-pooling PgBouncer
+	return pgxpool.NewWithConfig(ctx, cfg)
+}
+```
+
+> **⚡ Note on `MinConns`:** the pool maintains the `MinConns` floor lazily, via the `HealthCheckPeriod` sweep, rather than opening them all instantly at `New()`. So `MinConns` smooths the ramp and keeps a warm floor during quiet periods; it is not a hard "N connections exist the instant startup returns" guarantee. For latency-critical services that must be warm before taking traffic, issue a few throwaway `Ping`/`SELECT 1` calls at startup to force connections open before you flip the readiness probe.
+
+**Monitoring — the numbers that predict an outage.** Export `pool.Stat()` to Prometheus and alert on it; these move *before* users feel pain:
+
+```go
+// Sample pool.Stat() periodically into Prometheus gauges. (A custom
+// prometheus.Collector works too; a sampler is simpler and perfectly adequate.)
+func exportPoolMetrics(ctx context.Context, pool *pgxpool.Pool, reg prometheus.Registerer) {
+	acquired := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_acquired_conns"})
+	idle := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_idle_conns"})
+	total := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_total_conns"})
+	maxConns := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_max_conns"})
+	emptyAcq := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_empty_acquire_total"})
+	canceled := prometheus.NewGauge(prometheus.GaugeOpts{Name: "pgx_pool_canceled_acquire_total"})
+	reg.MustRegister(acquired, idle, total, maxConns, emptyAcq, canceled)
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s := pool.Stat()
+				acquired.Set(float64(s.AcquiredConns()))       // in use right now
+				idle.Set(float64(s.IdleConns()))               // free and ready
+				total.Set(float64(s.TotalConns()))             // open connections
+				maxConns.Set(float64(s.MaxConns()))            // the ceiling
+				emptyAcq.Set(float64(s.EmptyAcquireCount()))   // times a caller WAITED for a conn
+				canceled.Set(float64(s.CanceledAcquireCount())) // acquires abandoned (ctx expired waiting)
+			}
+		}
+	}()
+}
+```
+
+The alert set that maps to the failure modes above:
+
+| Signal | Condition | What it means → action |
+|---|---|---|
+| `AcquiredConns / MaxConns` | sustained > ~0.8 | Pool near saturation → optimize queries (§22.5.2) or scale out; raise `MaxConns` only if the connection budget (§22.5.3) allows. |
+| rate of `EmptyAcquireCount` | > 0 and rising | Callers are **waiting** for connections → the pool is the bottleneck (too small, or queries too slow). |
+| rate of `CanceledAcquireCount` | > 0 | Requests are **shedding** — waiting past their deadline and giving up. Active user-facing pain. |
+| `AcquireDuration` (from `Stat`) | p99 climbing | Contention for connections is growing before it's an outage. |
+
+`EmptyAcquireCount` rising is the leading indicator; `CanceledAcquireCount` rising is the lagging one that means users are already getting errors. Watch the first, and you fix the pool before you ever see the second.
+
 ---
 
 ## 23. Banking-Grade Security Checklist
