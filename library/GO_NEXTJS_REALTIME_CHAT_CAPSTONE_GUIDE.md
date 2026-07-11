@@ -1,14 +1,13 @@
-# Real-Time Chat Capstone (Gin · Ent · sqlc · goose · pgx · coder/websocket · JWT/Argon2 · Air + Next.js) — Beginner to Advanced — Complete Offline Reference
+# Real-Time Chat Capstone (Gin · Ent · goose · pgx · coder/websocket · JWT/Argon2 · Air + Next.js) — Beginner to Advanced — Complete Offline Reference
 
-> **Who this is for:** Developers who have met each tool in this stack on its own and now want to see them **composed into one real, production-shaped, banking-grade real-time chat application** — the "put it all together" reference. On the backend we run a **Go API** (Gin for HTTP, `golang-jwt/jwt` v5 + `x/crypto/argon2` for auth, **Ent** for the relation graph, **sqlc** for hot-path type-safe SQL, **goose** for migrations, **pgx v5** as the one shared pool, **Air** for the dev loop, and **`github.com/coder/websocket`** for realtime). On the frontend we run **Next.js 16 + React 19 + TanStack Query v5 + TypeScript**. Together they deliver the full feature set of a modern chat product: **register/login, rooms & channels, direct messages, presence, typing indicators, message history with keyset pagination, unread counts, and read receipts** — with realtime fan-out that scales across many server nodes via a **Redis pub/sub backplane**. This is an **explain-first** guide: every concept is taught in prose first (what it is, *why* the architecture pushes you this way, when to reach for it, how it works, the key parameters, best practices, and the **security implications**) and only then shown as heavily-commented, runnable code. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced. It **assumes and cross-references** the single-tool guides but is self-contained enough to follow top to bottom.
+> **Who this is for:** Developers who have met each tool in this stack on its own and now want to see them **composed into one real, production-shaped, banking-grade real-time chat application** — the "put it all together" reference. On the backend we run a **Go API** (Gin for HTTP, `golang-jwt/jwt` v5 + `x/crypto/argon2` for auth, **Ent** as the single type-safe data-access layer — every read and write, from the relation graph to the hot-path message queries — **goose** for migrations, **pgx v5** as the one shared connection pool, **Air** for the dev loop, and **`github.com/coder/websocket`** for realtime). On the frontend we run **Next.js 16 + React 19 + TanStack Query v5 + TypeScript**. Together they deliver the full feature set of a modern chat product: **register/login, rooms & channels, direct messages, presence, typing indicators, message history with keyset pagination, unread counts, and read receipts** — with realtime fan-out that scales across many server nodes via a **Redis pub/sub backplane**. This is an **explain-first** guide: every concept is taught in prose first (what it is, *why* the architecture pushes you this way, when to reach for it, how it works, the key parameters, best practices, and the **security implications**) and only then shown as heavily-commented, runnable code. Sections are tagged **[B]** beginner, **[I]** intermediate, **[A]** advanced. It **assumes and cross-references** the single-tool guides but is self-contained enough to follow top to bottom.
 >
-> **Version note:** Targets **Go 1.25 / 1.26**, **`github.com/gin-gonic/gin` v1.10+**, **`github.com/coder/websocket` v1.8.x**, **`entgo.io/ent` v0.14+**, **`sqlc` v1.31+** (config `version: "2"`, `sql_package: "pgx/v5"`), **`github.com/pressly/goose/v3` v3.27+**, **`github.com/jackc/pgx/v5`**, **`golang-jwt/jwt` v5**, **`golang.org/x/crypto/argon2`**, and **Air** for live reload. Frontend: **Next.js 16 (App Router)** on **React 19**, **`@tanstack/react-query` v5**, **TypeScript 5.x**. Infra: **PostgreSQL** (Supabase or plain), **Redis 7/8**, **Nginx**, **Docker** — all current as of **2026**. Fast-moving APIs are flagged with **⚡**. The author is on **Windows 11**, so cross-platform notes (`.exe`, path separators, shells) are called out where they bite.
+> **Version note:** Targets **Go 1.25 / 1.26**, **`github.com/gin-gonic/gin` v1.10+**, **`github.com/coder/websocket` v1.8.x**, **`entgo.io/ent` v0.14+**, **`github.com/pressly/goose/v3` v3.27+**, **`github.com/jackc/pgx/v5`**, **`golang-jwt/jwt` v5**, **`golang.org/x/crypto/argon2`**, and **Air** for live reload. Frontend: **Next.js 16 (App Router)** on **React 19**, **`@tanstack/react-query` v5**, **TypeScript 5.x**. Infra: **PostgreSQL** (Supabase or plain), **Redis 7/8**, **Nginx**, **Docker** — all current as of **2026**. Fast-moving APIs are flagged with **⚡**. The author is on **Windows 11**, so cross-platform notes (`.exe`, path separators, shells) are called out where they bite.
 >
-> **This guide's place in the library — it is the integration capstone that composes the whole Go + Next.js realtime stack.** It does not re-teach each tool from scratch; it teaches you to **wire them together** and shows the integration glue the single-tool guides leave out (one pool feeding two query layers, the WebSocket auth handshake from a browser, the Hub + Redis backplane, the optimistic cache with idempotent replay). Read each component guide alongside the section that uses it:
+> **This guide's place in the library — it is the integration capstone that composes the whole Go + Next.js realtime stack.** It does not re-teach each tool from scratch; it teaches you to **wire them together** and shows the integration glue the single-tool guides leave out (one pgx pool behind a single Ent data layer with goose owning the schema, the WebSocket auth handshake from a browser, the Hub + Redis backplane, the optimistic cache with idempotent replay). Read each component guide alongside the section that uses it:
 > - [Coder WebSocket](GO_CODER_WEBSOCKETS_GUIDE.md) — the Accept/Dial API, read/write pumps, the one-reader rule, CSWSH defense.
 > - [Goose migrations](GO_GOOSE_MIGRATIONS_GUIDE.md) — SQL migrations, embedding, advisory-locked runners.
-> - [sqlc + goose](GO_SQLC_GOOSE_GUIDE.md) — type-safe queries generated from the goose schema.
-> - [Go ent ORM](GO_ENT_ORM_GUIDE.md) — schema-as-code, edges, eager loading, hooks.
+> - [Go ent ORM](GO_ENT_ORM_GUIDE.md) — schema-as-code, edges, eager loading, hooks, the raw-SQL escape hatch — **the single data layer here**.
 > - [Go JWT + Argon2](GO_JWT_ARGON2_GUIDE.md) — the password-hashing & token threat models in full.
 > - [Go Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) — the router, `*gin.Context`, middleware, binding.
 > - [Go (Gin+Ent) + Next.js Full-Stack](GO_GIN_NEXTJS_REALTIME_FULLSTACK_GUIDE.md) — the sibling capstone (CRUD + realtime dashboard) this one deepens.
@@ -20,11 +19,11 @@
 ## Table of Contents
 
 1. [What We're Building & Why This Stack](#1-what-were-building--why-this-stack) **[B]**
-2. [The Data-Layer Division of Labor — One Pool, Two Query Layers](#2-the-data-layer-division-of-labor--one-pool-two-query-layers) **[I/A]**
+2. [The Data Layer — One Pool, Ent Over goose](#2-the-data-layer--one-pool-ent-over-goose) **[I/A]**
 3. [Project Layout, Config & Graceful Shutdown](#3-project-layout-config--graceful-shutdown) **[B/I]**
 4. [The Database Schema via goose Migrations](#4-the-database-schema-via-goose-migrations) **[I]**
 5. [Ent Schema — The Relation Graph](#5-ent-schema--the-relation-graph) **[I]**
-6. [sqlc — Type-Safe Hot-Path Queries](#6-sqlc--type-safe-hot-path-queries) **[I/A]**
+6. [Ent Queries — Messages, History, Unread & Receipts](#6-ent-queries--messages-history-unread--receipts) **[I/A]**
 7. [Authentication — Argon2id, JWT Access & Refresh Rotation](#7-authentication--argon2id-jwt-access--refresh-rotation) **[I/A]**
 8. [RBAC & Authorization — Room Roles and IDOR Defense](#8-rbac--authorization--room-roles-and-idor-defense) **[I/A]**
 9. [The REST API with Gin](#9-the-rest-api-with-gin) **[I]**
@@ -62,11 +61,11 @@ We are building **one real-time chat application** — think a self-hosted Slack
 | Register / login / refresh / logout | REST | Argon2id + JWT + `refresh_tokens` table | [§7](#7-authentication--argon2id-jwt-access--refresh-rotation) |
 | List rooms & DMs you belong to | REST | Ent (membership graph) | [§9](#9-the-rest-api-with-gin) |
 | Create room, invite/add members, set roles | REST | Ent (owner/admin/member) | [§8](#8-rbac--authorization--room-roles-and-idor-defense) |
-| Message history (newest-first, infinite scroll) | REST | **sqlc keyset pagination** | [§6](#6-sqlc--type-safe-hot-path-queries), [§9](#9-the-rest-api-with-gin) |
-| Send a message (persist + fan-out) | WebSocket | sqlc insert in a tx + Hub broadcast | [§12](#12-the-message-send-flow-end-to-end) |
+| Message history (newest-first, infinite scroll) | REST | **Ent keyset pagination** | [§6](#6-ent-queries--messages-history-unread--receipts), [§9](#9-the-rest-api-with-gin) |
+| Send a message (persist + fan-out) | WebSocket | Ent insert in a tx + Hub broadcast | [§12](#12-the-message-send-flow-end-to-end) |
 | Presence (who's online) | WebSocket | in-memory + Redis TTL keys | [§13](#13-presence--typing-indicators) |
 | Typing indicators | WebSocket | ephemeral (never persisted) | [§13](#13-presence--typing-indicators) |
-| Unread counts | REST + WS | **sqlc** count vs. last-read | [§14](#14-read-receipts--unread-counts) |
+| Unread counts | REST + WS | **Ent** count vs. last-read | [§14](#14-read-receipts--unread-counts) |
 | Read receipts | WebSocket | `read_receipts` table + broadcast | [§14](#14-read-receipts--unread-counts) |
 | Cluster-wide broadcast | internal | **Redis pub/sub backplane** | [§15](#15-scaling-out--the-redis-pubsub-backplane--nginx) |
 
@@ -78,7 +77,7 @@ We are building **one real-time chat application** — think a self-hosted Slack
 │  (the browser app)            │  HTTPS  │  ┌─────────────────────────────────┐  │
 │  • Login / Register           │ ──REST──▶  │ Gin router + Auth/RBAC middleware│  │
 │  • Room list + unread badges  │ ◀──JSON─┤  │ Ent (users, rooms, memberships) │  │
-│  • Message list (infinite)    │         │  │ sqlc (messages, history, unread)│  │
+│  • Message list (infinite)    │         │  │ Ent  (messages, history, unread)│  │
 │  • Composer + typing          │   WSS   │  │ Argon2id + JWT (golang-jwt v5)  │  │
 │  • Presence dots              │ ◀═realtime═ │ coder/websocket Hub             │  │
 │  • TanStack Query cache       │  events │  └──────┬──────────────────┬────────┘  │
@@ -111,14 +110,13 @@ Each tool earns its place; the honest one-line justification and its deep-dive g
 |---|---|---|---|
 | HTTP framework | **Gin** | Fast radix router, middleware chain, binding/validation — the Go REST default | [Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) |
 | Migrations / schema truth | **goose** | Plain SQL migrations, embeddable, advisory-lockable; the single source of truth for the schema | [Goose](GO_GOOSE_MIGRATIONS_GUIDE.md) |
-| Hot-path queries | **sqlc** | Generates type-safe Go from SQL you write and review; perfect for the message insert, keyset history, unread counts | [sqlc + goose](GO_SQLC_GOOSE_GUIDE.md) |
-| Relation-graph CRUD | **Ent** | Schema-as-Go-code + codegen; graph traversal & eager-loading for users/rooms/memberships/invites | [Ent](GO_ENT_ORM_GUIDE.md) |
-| DB driver / pool | **pgx v5** | The fastest, most correct Postgres driver for Go; **one** `*pgxpool.Pool` shared by sqlc *and* Ent | [PostgreSQL](POSTGRESQL_GUIDE.md) |
+| All data access (reads & writes) | **Ent** | Schema-as-Go-code + codegen: typed graph traversal & eager-loading for users/rooms/memberships **and** typed predicate/keyset queries for the message hot path, with a raw-SQL escape hatch (`Modify`) for the few gnarly ones | [Ent](GO_ENT_ORM_GUIDE.md) |
+| DB driver / pool | **pgx v5** | The fastest, most correct Postgres driver for Go; **one** `*pgxpool.Pool` shared by Ent and the goose migration runner | [PostgreSQL](POSTGRESQL_GUIDE.md) |
 | Password hashing | **Argon2id** | Memory-hard PHC-winner; current best practice | [JWT+Argon2](GO_JWT_ARGON2_GUIDE.md) |
 | Auth tokens | **JWT access + rotating refresh** | Access in memory, refresh in an HttpOnly cookie with reuse detection | [JWT+Argon2](GO_JWT_ARGON2_GUIDE.md) |
 | Realtime | **coder/websocket** | Modern, context-first WS library; concurrency-safe writes; CSWSH-safe by default | [Coder WS](GO_CODER_WEBSOCKETS_GUIDE.md) |
 | Cross-node fan-out | **Redis pub/sub** | Lets every WS node broadcast to the whole cluster; also holds presence TTLs | [Redis](REDIS_GUIDE.md) |
-| Dev loop | **Air** | Recompiles on save; we hook `sqlc generate` + `goose up` into it | this guide, [§23](#23-deployment--docker-compose--migrations-on-deploy) |
+| Dev loop | **Air** | Recompiles on save; we hook `go generate ./ent/...` + `goose up` into it | this guide, [§23](#23-deployment--docker-compose--migrations-on-deploy) |
 
 > **⚡ Version note — coder/websocket vs. gorilla/websocket.** The sibling capstone uses `gorilla/websocket`; this one deliberately uses **`github.com/coder/websocket`** (formerly `nhooyr.io/websocket`) to teach the modern, context-first API. The key behavioral differences you must internalize: `Accept` **blocks cross-origin requests by default** (you *opt in* to origins via `AcceptOptions.OriginPatterns`), every method except `Read`/`Reader` is concurrency-safe, and JSON helpers live in a separate `wsjson` package. See [§10](#10-realtime-with-coderwebsocket--the-hub-architecture).
 
@@ -173,36 +171,32 @@ Sections 2–15 are the **backend**, front to back: data layer → schema → au
 
 ---
 
-## 2. The Data-Layer Division of Labor — One Pool, Two Query Layers
+## 2. The Data Layer — One Pool, Ent Over goose
 
-This is the **central architecture lesson** of the guide and the reason it exists, so we teach it before any schema. Most tutorials pick *one* data-access tool and marry it. Real systems frequently mix them, and doing so *cleanly* is a skill. We will run **goose, sqlc, and Ent together over one pgx pool**, and — importantly — we will be honest that **many apps need only one of these**. The chat app is a case where each tool's strength is genuinely load-bearing, which is what justifies the extra moving parts.
+This is a foundational architecture decision, so we make it before any schema. Two facts drive everything downstream: **goose owns the schema** (all DDL lives in versioned migrations) and **Ent is the one and only way the Go code reads or writes data** — from the relation graph (users, rooms, memberships) to the hot path (insert a message, keyset-paginate history, count unread). Both run over a **single `pgx` connection pool**. Keeping the data layer to *one* query tool is a deliberate simplicity choice: one mental model, one code-gen step, one place a bug can hide. Where Ent's fluent builder is genuinely awkward — a read or two — we drop to its **raw-SQL escape hatch** rather than bolt on a second query library.
 
-### 2.1 The four tools and their non-overlapping jobs **[I]**
+### 2.1 The three responsibilities **[I]**
 
-Think of it as four responsibilities, each owned by exactly one tool:
+Think of it as three responsibilities, each owned by exactly one tool:
 
-- **goose = the schema's single source of truth.** Every table, column, index, constraint, enum, and trigger is defined in versioned SQL migration files. Nothing else is allowed to create or alter schema. Not sqlc (it only *reads* the schema to generate types), not Ent (its auto-migration is **turned off**). If it isn't in a goose migration, it does not exist. This gives you one linear, reviewable, forward-and-back history of your database, deployable with an advisory lock so a rolling deploy of N app instances migrates exactly once. See [§4](#4-the-database-schema-via-goose-migrations) and the [Goose guide](GO_GOOSE_MIGRATIONS_GUIDE.md).
+- **goose = the schema's single source of truth.** Every table, column, index, constraint, enum, and trigger is defined in versioned SQL migration files. Nothing else creates or alters schema — **Ent's auto-migration is turned off** (it only issues DML: inserts/updates/selects, never DDL). If it isn't in a goose migration, it does not exist. This gives you one linear, reviewable, forward-and-back history of the database, deployable with an advisory lock so a rolling deploy of N app instances migrates exactly once. See [§4](#4-the-database-schema-via-goose-migrations) and the [Goose guide](GO_GOOSE_MIGRATIONS_GUIDE.md).
 
-- **sqlc = the hot path and the hard queries.** The message `INSERT`, the keyset-paginated history read, the unread-count aggregate, the "recent conversations" list — these are performance- and correctness-critical, and you want to *see and review the exact SQL* and get a compile error if a column changes. sqlc reads your goose migrations as the schema and your `.sql` query files, and generates Go functions with typed params and rows. No reflection, no query builder, no surprises in the plan. See [§6](#6-sqlc--type-safe-hot-path-queries) and the [sqlc + goose guide](GO_SQLC_GOOSE_GUIDE.md).
+- **Ent = every read and write.** Ent is schema-as-Go-code with codegen, giving you a fully type-safe client. Its typed **edges and eager-loading** (`WithMembers`, `WithRooms`) make the graph/RBAC operations — "load this user with their rooms and each room's members," "add a member with role admin," "is this user in that room?" — clean and hard to get wrong ([§8](#8-rbac--authorization--room-roles-and-idor-defense)). Its typed **predicates, ordering, `Limit`, and aggregation** cover the message hot path — insert, compound-keyset history, unread counts, receipt upserts ([§6](#6-ent-queries--messages-history-unread--receipts)) — with the exact `WHERE`/`ORDER BY`/index usage you intend. For the one or two reads the builder can't express cleanly, Ent's **`Modify` / raw-SQL escape hatch** lets you write the SQL by hand while still using the same client, transaction, and pool. See [§5](#5-ent-schema--the-relation-graph), [§6](#6-ent-queries--messages-history-unread--receipts), and the [Ent guide](GO_ENT_ORM_GUIDE.md).
 
-- **Ent = the relation graph and RBAC CRUD.** Users, rooms, memberships, roles, invitations — data whose *shape is a graph* and whose operations are "load this user with their rooms and each room's members," "add a member with role admin," "is this user a member of that room?" Ent's typed edges and eager-loading (`WithMembers`, `WithRooms`) make graph traversal and the authorization checks in [§8](#8-rbac--authorization--room-roles-and-idor-defense) clean and hard to get wrong. See [§5](#5-ent-schema--the-relation-graph) and the [Ent guide](GO_ENT_ORM_GUIDE.md).
+- **pgx v5 = the one connection pool everything shares.** There is exactly **one** `*pgxpool.Pool` in the process. Ent draws from it through a thin `database/sql` shim; goose runs its migrations over the same pool. One pool means one place to size connections, one health check, one set of metrics, and no double-counting against Postgres's `max_connections`.
 
-- **pgx v5 = the one connection pool everything shares.** There is exactly **one** `*pgxpool.Pool` in the process. sqlc talks to it directly. Ent talks to the *same* pool through a thin `database/sql` shim. goose runs its migrations over the same pool. One pool means one place to size connections, one health check, one set of metrics, and no double-counting against Postgres's connection limit.
+### 2.2 Why Ent for everything — an honest accounting **[I]**
 
-### 2.2 Why not just one tool? An honest accounting **[I]**
+The tempting alternative is to reach for a second tool — a query generator like **sqlc** — for the "hot path," on the theory that an ORM hurts where you need a specific index or a batch insert. That split is a real and defensible architecture (the [sqlc + goose guide](GO_SQLC_GOOSE_GUIDE.md) teaches it in full), but it costs you **two code-gen steps, two mental models, and a rule everyone must remember**. For this app we deliberately **do not** pay that cost: Ent's builder is expressive enough for the chat hot path, and modern Ent gives you the two things people historically dropped to raw SQL for —
 
-You could build this whole app with **only Ent** (it can do raw SQL for the hard queries) or **only sqlc** (you'd hand-write the graph queries and joins). Both are legitimate, and for a smaller app you should pick one and move on. We combine them because the chat domain splits cleanly along the exact seam where each shines:
+- **Exact queries, not mystery plans.** Ent predicates map predictably to SQL: `message.RoomID(id)` → `WHERE room_id = $1`, `Order(ent.Desc(...))` → `ORDER BY`, `Limit(50)` → `LIMIT`. You get compile-time-checked field names (rename a field, regenerate, and every wrong usage fails to build), and you can log the emitted SQL in dev to confirm it rides the index you built. Compound **keyset pagination** ([§6.2](#6-ent-queries--messages-history-unread--receipts)) is just an `Or(CreatedAtLT, And(CreatedAtEQ, IDLT))` predicate.
+- **A raw-SQL escape hatch when you truly need it.** For the genuinely awkward read — the "recent conversations" sidebar wants the latest message per room, a `LATERAL`/`DISTINCT ON` shape — Ent's `.Modify(func(s *sql.Selector){ … })` lets you inject exactly that SQL through the same client, transaction, and pool. You reach for hand-written SQL *once*, not a whole second library and build step.
 
-- The **graph/RBAC** side (who is in what room with which role, invitations, "list my conversations with their members") is *tedious and error-prone in hand-written SQL* — lots of joins, N+1 traps, and authorization logic. Ent removes that pain.
-- The **hot path** (insert a message; read the last 50 before a cursor; count unread across a user's rooms) is *exactly where an ORM's abstraction hurts*: you want a specific index used, a specific keyset predicate, a batch insert, and a `numeric` that never becomes a float. sqlc gives you the SQL verbatim with types bolted on.
+> **Best practice — one write owner per row, enforced in one place.** Because Ent owns every write, invariants (a membership role is valid, a message has a sender, `client_msg_id` is unique per room+sender) live in one layer — Ent hooks, schema validators, and the DB constraints goose created — instead of being split across two code generators. If your team's hot path ever outgrows what Ent expresses comfortably, adding sqlc later is a clean, additive step over the *same* goose schema; you don't have to start there.
 
-The cost is real: two code-gen steps, two mental models, and a rule everyone must remember — **schema changes go in goose, then regenerate both**. We make that cheap by wiring `goose up` + `sqlc generate` + `ent generate` into the [Air](#23-deployment--docker-compose--migrations-on-deploy) dev loop so they never drift. If your team won't hold that discipline, use one tool. For this guide, the two-layer split *is* one of the lessons.
+### 2.3 One pool, one query layer — the wiring **[I/A]**
 
-> **Best practice — draw the line by *ownership of the write*, not by table.** A table can be *read* by both layers, but each row's *writes* should have one owner. Here: Ent owns writes to `users`, `rooms`, `room_members` (membership/roles/invites). sqlc owns writes to `messages` and `read_receipts` (the hot path). Both may *read* any table. This keeps invariants (e.g., "a membership role is valid") enforced in one place while letting the fast path stay fast.
-
-### 2.3 One pool, two query layers — the wiring **[I/A]**
-
-Here is the code that makes it real: build one `pgxpool.Pool`, hand it to sqlc directly, and hand the *same* pool to Ent through `stdlib.OpenDBFromPool`. Ent's schema migration is off because goose owns the schema.
+Here is the code that makes it real: build one `pgxpool.Pool` and hand it to Ent through `stdlib.OpenDBFromPool`. Ent's schema migration stays off because goose owns the schema.
 
 ```go
 // internal/db/db.go
@@ -218,15 +212,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib" // bridges a pgxpool to database/sql
 
-	"chat/ent"          // Ent generated client
-	gen "chat/db/gen"   // sqlc generated package
+	"chat/ent" // Ent generated client — the single data layer
 )
 
-// Store bundles the two query layers over the ONE shared pool.
+// Store wraps the ONE shared pool and the Ent client that runs over it.
 type Store struct {
 	Pool *pgxpool.Pool // the single source of connections
-	Q    *gen.Queries  // sqlc: hot-path & complex read queries
-	Ent  *ent.Client   // Ent: relation-graph CRUD & RBAC
+	Ent  *ent.Client   // Ent: every read and write in the app
 }
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
@@ -250,11 +242,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		return nil, fmt.Errorf("ping: %w", err)
 	}
 
-	// 2) sqlc gets the pool DIRECTLY. gen.New accepts a DBTX, which *pgxpool.Pool
-	//    satisfies (Exec/Query/QueryRow). For a tx you call q.WithTx(pgx.Tx).
-	queries := gen.New(pool)
-
-	// 3) Ent gets the SAME pool via a database/sql shim. stdlib.OpenDBFromPool
+	// 2) Ent draws from the SAME pool via a database/sql shim. stdlib.OpenDBFromPool
 	//    wraps the pgxpool as a *sql.DB WITHOUT opening new connections of its own.
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	drv := entsql.OpenDB(dialect.Postgres, sqlDB)
@@ -262,7 +250,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	// NOTE: we deliberately DO NOT call entClient.Schema.Create(...) — goose owns
 	// the schema. Ent only issues DML (inserts/updates/selects), never DDL.
 
-	return &Store{Pool: pool, Q: queries, Ent: entClient}, nil
+	return &Store{Pool: pool, Ent: entClient}, nil
 }
 
 // Close releases everything. Closing the Ent client closes its *sql.DB wrapper,
@@ -276,11 +264,11 @@ func (s *Store) Close() {
 Two subtleties worth calling out now because they cause confusing bugs later:
 
 1. **`stdlib.OpenDBFromPool(pool)` does not create a second pool.** It wraps your existing `pgxpool` so `database/sql` (and thus Ent) draws from the same connections. If you instead called `sql.Open("pgx", dsn)` you would have *two* independent pools both counting against Postgres's `max_connections` — the classic "why am I out of connections at half the load I expected" bug.
-2. **Transactions do not span the two layers.** A `pgx.Tx` you begin for a sqlc insert is not visible to Ent, and vice versa. That is fine here because our write-ownership rule ([§2.2](#22-why-not-just-one-tool-an-honest-accounting)) means a single business operation writes through *one* layer. The one place we take a transaction — the message send — is entirely sqlc ([§12](#12-the-message-send-flow-end-to-end)). If you ever truly need a cross-layer transaction, you must drop to a shared `pgx.Tx` and give it to *both* `q.WithTx(tx)` and an Ent client built on that tx — possible but a smell; prefer to keep operations single-layer.
+2. **Transactions go through Ent.** When a business operation must be atomic — the message send ([§12](#12-the-message-send-flow-end-to-end)) persists a message and advances a counter together — you take an **Ent transaction** with `client.Tx(ctx)`, do all the work on the returned `*ent.Tx`, then `Commit()` (or `Rollback()` on error). Because Ent is the only writer there is no cross-library transaction to coordinate; and if you ever need raw SQL inside that same transaction, `tx.Message.Query().Modify(...)` (or `tx.ExecContext`) runs on the very same connection.
 
 ### 2.4 The mental model to keep **[I]**
 
-> **goose writes the schema. Ent walks the graph. sqlc runs the hot path. pgx owns the sockets.** When you add a feature, ask: *is this a schema change?* → goose migration first. *Is this graph/RBAC CRUD?* → Ent. *Is this a performance-critical or gnarly query?* → sqlc. *Where do connections come from?* → the one pool. Hold that and the rest of the guide slots into place.
+> **goose writes the schema. Ent does every read and write. pgx owns the sockets.** When you add a feature, ask: *is this a schema change?* → goose migration first. *Is this a read or write of data?* → an Ent query (drop to `Modify`/raw SQL only if the builder can't say it). *Where do connections come from?* → the one pool. Hold that and the rest of the guide slots into place.
 
 ---
 
@@ -297,7 +285,7 @@ chat/
 │  │  └─ api/main.go            # entrypoint: wire config→store→hub→router→http.Server
 │  ├─ internal/
 │  │  ├─ config/config.go       # typed env config, fail-fast
-│  │  ├─ db/db.go               # the Store (pool + sqlc + Ent) from §2.3
+│  │  ├─ db/db.go               # the Store (one pool + Ent) from §2.3
 │  │  ├─ auth/                  # argon2, jwt, refresh rotation, middleware (§7)
 │  │  ├─ rbac/                  # room-role checks (§8)
 │  │  ├─ rest/                  # gin handlers + DTOs (§9)
@@ -305,13 +293,11 @@ chat/
 │  │  ├─ presence/              # presence + typing, redis-backed (§13)
 │  │  └─ backplane/             # redis pub/sub fan-out (§15)
 │  ├─ db/
-│  │  ├─ migrations/            # goose *.sql — THE schema (§4)
-│  │  ├─ query/                 # sqlc *.sql query files (§6)
-│  │  └─ gen/                   # sqlc-generated Go (do not edit)
+│  │  └─ migrations/            # goose *.sql — THE schema (§4)
 │  ├─ ent/
 │  │  ├─ schema/                # Ent schema-as-code (§5)
-│  │  └─ *.go                   # ent-generated (do not edit)
-│  ├─ sqlc.yaml                 # sqlc config (§6.1)
+│  │  ├─ generate.go            # go:generate entc — codegen entrypoint
+│  │  └─ *.go                   # ent-generated client & builders (do not edit)
 │  ├─ .air.toml                 # dev loop (§23.6)
 │  ├─ Dockerfile
 │  └─ go.mod
@@ -505,7 +491,7 @@ We flesh out `hub.Drain()`, `MigrateUp`, and `backplane` in their sections. The 
 ---
 ## 4. The Database Schema via goose Migrations
 
-goose owns the schema ([§2.1](#21-the-four-tools-and-their-non-overlapping-jobs)). Every table below is created by a numbered SQL migration in `server/db/migrations/`. We embed those files into the binary and run them, advisory-locked, at boot. This section is both the schema reference for the whole app and a worked goose example; for the tool in depth see the [Goose migrations guide](GO_GOOSE_MIGRATIONS_GUIDE.md) and [sqlc + goose](GO_SQLC_GOOSE_GUIDE.md).
+goose owns the schema ([§2.1](#21-the-three-responsibilities)). Every table below is created by a numbered SQL migration in `server/db/migrations/`. We embed those files into the binary and run them, advisory-locked, at boot. This section is both the schema reference for the whole app and a worked goose example; for the tool in depth see the [Goose migrations guide](GO_GOOSE_MIGRATIONS_GUIDE.md).
 
 ### 4.1 goose migration anatomy **[I]**
 
@@ -874,12 +860,99 @@ func (Membership) Indexes() []ent.Index {
 }
 ```
 
-### 5.5 Generating and using the client **[I]**
+### 5.5 The Message schema **[I]**
+
+Because Ent now owns the message hot path ([§6](#6-ent-queries--messages-history-unread--receipts)), the `messages` table gets an Ent schema too — a hand-maintained mirror of exactly what goose created, including the unique index behind idempotent sends and the composite index behind keyset history.
+
+```go
+// ent/schema/message.go
+package schema
+
+import (
+	"time"
+
+	"entgo.io/ent"
+	"entgo.io/ent/schema/edge"
+	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
+	"github.com/google/uuid"
+)
+
+type Message struct{ ent.Schema }
+
+func (Message) Fields() []ent.Field {
+	return []ent.Field{
+		field.UUID("id", uuid.UUID{}).Default(uuid.New),
+		field.UUID("room_id", uuid.UUID{}),
+		field.UUID("sender_id", uuid.UUID{}),
+		field.Text("body").NotEmpty(),
+		field.UUID("client_msg_id", uuid.UUID{}), // client-generated, for idempotency
+		field.Time("created_at").Default(time.Now).Immutable(),
+	}
+}
+
+func (Message) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("room", Room.Type).Field("room_id").Unique().Required(),
+		edge.To("sender", User.Type).Field("sender_id").Unique().Required(),
+	}
+}
+
+func (Message) Indexes() []ent.Index {
+	return []ent.Index{
+		// Idempotency: one message per (room, sender, client_msg_id) — powers §6.2's insert.
+		index.Fields("room_id", "sender_id", "client_msg_id").Unique(),
+		// Keyset history: newest-first scan within a room — powers §6.2's pagination.
+		index.Fields("room_id", "created_at", "id"),
+	}
+}
+```
+
+### 5.6 The ReadReceipt schema **[I]**
+
+`read_receipts` records how far each user has read in each room — one row per (room, user). Ent's `OnConflict` upsert ([§6.3](#6-ent-queries--messages-history-unread--receipts)) keeps it current.
+
+```go
+// ent/schema/readreceipt.go
+package schema
+
+import (
+	"time"
+
+	"entgo.io/ent"
+	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
+	"github.com/google/uuid"
+)
+
+type ReadReceipt struct{ ent.Schema }
+
+func (ReadReceipt) Fields() []ent.Field {
+	return []ent.Field{
+		field.UUID("room_id", uuid.UUID{}),
+		field.UUID("user_id", uuid.UUID{}),
+		field.UUID("message_id", uuid.UUID{}),
+		field.Time("read_at").Default(time.Now),
+	}
+}
+
+func (ReadReceipt) Indexes() []ent.Index {
+	return []ent.Index{
+		// One receipt per (room, user); the OnConflict target in §6.3.
+		index.Fields("room_id", "user_id").Unique(),
+	}
+}
+```
+
+> **⚡ Enable the `sql/modifier` feature.** The "recent conversations" read ([§6.4](#6-ent-queries--messages-history-unread--receipts)) uses Ent's raw-SQL escape hatch `.Modify(...)`, which is only generated when you turn the feature on in codegen (see the `generate.go` line below). Everything else in this guide needs no extra features.
+
+### 5.7 Generating and using the client **[I]**
 
 ```bash
 # From server/, regenerate the Ent client whenever a schema file changes.
-go generate ./ent
-# (ent/generate.go contains: //go:generate go run -mod=mod entgo.io/ent/cmd/ent generate ./schema)
+go generate ./ent/...
+# ent/generate.go contains:
+#   //go:generate go run -mod=mod entgo.io/ent/cmd/ent generate --feature sql/modifier ./schema
 ```
 
 Typed queries the RBAC layer will lean on — note the eager-loading that eliminates N+1:
@@ -901,172 +974,224 @@ memberships, err := store.Ent.Membership.Query().
 	All(ctx)
 ```
 
-> **Why Ent here and sqlc for messages?** Notice the query above walks *three levels of relationship* (membership → room → members → user) and Ent eager-loads it in a handful of batched queries with zero hand-written SQL. That is Ent's sweet spot. A message-history read, by contrast, is a single-table keyset scan where we want to *control the exact predicate and index* — sqlc's sweet spot ([§6](#6-sqlc--type-safe-hot-path-queries)). Same pool, right tool per job.
+> **Why Ent eager-loads this so cleanly.** Notice the query above walks *three levels of relationship* (membership → room → members → user) and Ent eager-loads it in a handful of batched queries with zero hand-written SQL — no N+1, no join to hand-tune. That is Ent's sweet spot. A message-history read, by contrast, is a single-table keyset scan where we want to *control the exact predicate and index* — and Ent expresses that just as precisely with typed predicates plus `Order`/`Limit` ([§6](#6-ent-queries--messages-history-unread--receipts)). One client, every query.
 
 ---
 
-## 6. sqlc — Type-Safe Hot-Path Queries
+## 6. Ent Queries — Messages, History, Unread & Receipts
 
-sqlc reads your **goose migrations** as the schema and your **`.sql` query files** and generates Go functions with typed parameters and typed result rows — no reflection, no query builder, the exact SQL you wrote and reviewed. We use it for the four hottest/gnarliest queries in the app: **insert a message (idempotent)**, **keyset-paginate history**, **count unread**, and **list recent conversations**. See the [sqlc + goose guide](GO_SQLC_GOOSE_GUIDE.md) for the tool in depth.
+[§5](#5-ent-schema--the-relation-graph) defined the graph; now we write the app's data operations against it — **all of them in Ent**, from the message hot path to the trickiest aggregate. This section covers the four operations people usually assume need hand-written SQL: **insert a message (idempotent)**, **keyset-paginate history**, **count unread**, and **list recent conversations** — showing that Ent's typed builder handles the first three precisely and that its **raw-SQL escape hatch** cleanly covers the fourth. Every call runs on the shared pool from [§2.3](#23-one-pool-one-query-layer--the-wiring), inside an `*ent.Tx` when the write must be atomic. See the [Ent guide](GO_ENT_ORM_GUIDE.md) for the builder in depth.
 
-### 6.1 sqlc.yaml — pointing schema at the goose dir **[I]**
+### 6.1 How Ent expresses a query **[I]**
 
-The single most important line: `schema:` points at the **goose migrations directory**, not a separate schema file. sqlc understands goose's `-- +goose Up/Down` annotations natively and builds its type model from the same migrations that create your real tables — so sqlc's types can never drift from production DDL.
+Every read is `client.<Entity>.Query()` followed by typed **predicates** (`.Where(...)`), **ordering** (`.Order(...)`), a **`.Limit(...)`**, and a terminator (`.All`, `.First`, `.Only`, `.Count`, or an aggregation). The field helpers come from codegen, so a renamed column is a *compile* error, not a runtime surprise. The predicates map to SQL exactly as you'd expect — which is what lets Ent serve the hot path with no loss of control. Confirm the plan rides your index by logging the emitted SQL in development:
 
-```yaml
-# server/sqlc.yaml
-version: "2"
-sql:
-  - engine: "postgresql"
-    schema: "db/migrations"     # THE goose migrations = the schema (single source of truth)
-    queries: "db/query"          # our hand-written .sql query files
-    gen:
-      go:
-        package: "gen"
-        out: "db/gen"
-        sql_package: "pgx/v5"    # generate pgx v5 code (uses the pool / pgx.Tx as DBTX)
-        emit_pointers_for_null_types: true
-        overrides:
-          - db_type: "uuid"
-            go_type: "github.com/google/uuid.UUID"
-          - db_type: "timestamptz"
-            go_type: "time.Time"
+```go
+// Turn on SQL debug logging in dev only (never in prod — it logs parameter values).
+if cfg.Debug {
+	entClient = entClient.Debug() // wraps the driver to log every statement it runs
+}
+
+// The predicate → SQL mapping you can rely on:
+//   message.RoomID(id)                 →  WHERE room_id = $1
+//   message.SenderIDNEQ(uid)           →  AND sender_id <> $2
+//   .Order(ent.Desc(message.FieldCreatedAt), ent.Desc(message.FieldID))
+//                                      →  ORDER BY created_at DESC, id DESC
+//   .Limit(50)                         →  LIMIT 50
+//   .Count(ctx)                        →  SELECT count(*)
 ```
 
-> **⚡ Version note.** `version: "2"` and `sql_package: "pgx/v5"` are the current, correct settings (sqlc v1.31+). With `pgx/v5`, the generated `New(db DBTX)` accepts anything implementing `Exec/Query/QueryRow` — which `*pgxpool.Pool` and `pgx.Tx` both do — so the same `Queries` value works on the pool for autocommit reads and, via `q.WithTx(tx)`, inside a transaction for the send flow.
+Because Ent owns every write, we also lean on the **schema-level guarantees** from [§5](#5-ent-schema--the-relation-graph): the `client_msg_id` unique index (per room + sender) makes the idempotent insert below a one-liner, and constraints created by goose ([§4](#4-the-database-schema-via-goose-migrations)) are enforced by the database regardless of what the Go code does.
 
-### 6.2 The message queries **[I/A]**
+### 6.2 Messages — idempotent insert and compound-keyset history **[I/A]**
 
-Query annotations tell sqlc what to generate: `:one` (single row), `:many` (slice), `:exec` (no rows), `:execrows` (rows-affected). Parameters are `$1, $2, …`; `sqlc.arg(name)` names them; `sqlc.narg(name)` marks a *nullable* arg (used for the keyset cursor's "first page" case).
+**Idempotent insert.** A client may retry a send (flaky network, reconnect) with the *same* `client_msg_id`. The `messages_room_sender_cmid_uidx` unique index from [§4](#4-the-database-schema-via-goose-migrations) makes a double-insert impossible; we turn the resulting constraint error into "fetch the one that's already there," so a retry returns the *original* message instead of erroring or duplicating.
 
-```sql
--- server/db/query/messages.sql
-
--- name: InsertMessage :one
--- Idempotent insert. If this (room, sender, client_msg_id) already exists — a retry —
--- the ON CONFLICT DO NOTHING makes RETURNING empty, and we fall back to SelectByIdem.
-INSERT INTO messages (room_id, sender_id, body, client_msg_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (room_id, sender_id, client_msg_id) DO NOTHING
-RETURNING id, room_id, sender_id, body, client_msg_id, created_at;
-
--- name: SelectMessageByIdem :one
-SELECT id, room_id, sender_id, body, client_msg_id, created_at
-FROM messages
-WHERE room_id = $1 AND sender_id = $2 AND client_msg_id = $3;
-
--- name: ListRoomHistory :many
--- Keyset pagination: newest-first, everything strictly OLDER than the cursor
--- (created_at, id). On the first page pass NULLs and the predicate degrades to "no cursor".
--- Rides the messages_room_created_idx index exactly.
-SELECT id, room_id, sender_id, body, client_msg_id, created_at
-FROM messages
-WHERE room_id = $1
-  AND (
-    sqlc.narg(before_created_at)::timestamptz IS NULL
-    OR (created_at, id) < (sqlc.narg(before_created_at)::timestamptz, sqlc.narg(before_id)::uuid)
-  )
-ORDER BY created_at DESC, id DESC
-LIMIT $2;
+```go
+// InsertMessage runs on an *ent.Tx (the send flow is atomic — §12). On a duplicate
+// (room, sender, client_msg_id) the unique index fires and Ent returns a constraint
+// error, which we treat as "already stored" and read back the original row.
+func (s *Store) InsertMessage(ctx context.Context, tx *ent.Tx, in NewMessage) (*ent.Message, error) {
+	m, err := tx.Message.Create().
+		SetRoomID(in.RoomID).
+		SetSenderID(in.SenderID).
+		SetBody(in.Body).
+		SetClientMsgID(in.ClientMsgID).
+		Save(ctx)
+	if err == nil {
+		return m, nil // normal path: a brand-new message
+	}
+	if !ent.IsConstraintError(err) {
+		return nil, err // a real failure, not the idempotency case
+	}
+	// Retry of an already-stored message: return the original, unchanged.
+	return tx.Message.Query().
+		Where(
+			message.RoomID(in.RoomID),
+			message.SenderID(in.SenderID),
+			message.ClientMsgID(in.ClientMsgID),
+		).
+		Only(ctx)
+}
 ```
 
-**Why keyset, not `OFFSET`.** `OFFSET 10000 LIMIT 50` makes Postgres read and discard 10,000 rows every deep page — cost grows with page depth, and rows shift under you as new messages arrive, causing skips/dupes. Keyset pagination carries a **cursor** (the `(created_at, id)` of the last row you saw) and asks for rows *strictly older than the cursor*. Cost is constant regardless of depth, and because the cursor is an absolute position, concurrent inserts never cause skips. The `(created_at, id)` tuple (not `created_at` alone) breaks ties when two messages share a timestamp — essential for correctness.
+**Keyset-paginated history.** History loads newest-first, a page at a time, everything strictly *older* than a cursor `(created_at, id)`. We express the compound cursor as an `Or(created_at < c, (created_at = c AND id < cid))` predicate — the tuple, not `created_at` alone, so messages sharing a timestamp never skip or duplicate. On the first page there is no cursor and we omit the predicate entirely.
 
-### 6.3 Unread counts and recent conversations **[I/A]**
-
-Unread for a room = messages newer than the user's `last_read_message_id` (excluding the user's own). We compute it against the same keyset index. The "recent conversations" query powers the sidebar: each room the user is in, its last message, and its unread count, ordered by most-recent activity.
-
-```sql
--- server/db/query/unread.sql
-
--- name: CountUnreadForRoom :one
--- Count messages in a room newer than the user's last-read pointer, not sent by them.
-SELECT count(*) AS unread
-FROM messages m
-LEFT JOIN room_members rm
-       ON rm.room_id = m.room_id AND rm.user_id = sqlc.arg(user_id)
-WHERE m.room_id = sqlc.arg(room_id)
-  AND m.sender_id <> sqlc.arg(user_id)
-  AND (
-    rm.last_read_message_id IS NULL
-    OR m.created_at > (
-        SELECT created_at FROM messages WHERE id = rm.last_read_message_id
-    )
-  );
-
--- name: MarkRoomRead :execrows
--- UPSERT both the membership pointer AND the read_receipts row in the SAME logical op.
--- We only ever move the pointer FORWARD (never backward) via the GREATEST-style guard.
-WITH target AS (
-    SELECT created_at FROM messages WHERE id = sqlc.arg(message_id) AND room_id = sqlc.arg(room_id)
-)
-UPDATE room_members rm
-SET last_read_message_id = sqlc.arg(message_id)
-FROM target
-WHERE rm.room_id = sqlc.arg(room_id)
-  AND rm.user_id = sqlc.arg(user_id)
-  AND (
-    rm.last_read_message_id IS NULL
-    OR (SELECT created_at FROM messages WHERE id = rm.last_read_message_id) < target.created_at
-  );
-
--- name: UpsertReadReceipt :exec
-INSERT INTO read_receipts (room_id, user_id, message_id, read_at)
-VALUES ($1, $2, $3, now())
-ON CONFLICT (room_id, user_id)
-DO UPDATE SET message_id = EXCLUDED.message_id, read_at = EXCLUDED.read_at
-WHERE read_receipts.message_id <> EXCLUDED.message_id;
+```go
+func (s *Store) RoomHistory(ctx context.Context, roomID uuid.UUID, before *Cursor, limit int) ([]*ent.Message, error) {
+	q := s.Ent.Message.Query().Where(message.RoomID(roomID))
+	if before != nil { // subsequent pages carry the last row the client saw
+		q = q.Where(message.Or(
+			message.CreatedAtLT(before.CreatedAt),
+			message.And(
+				message.CreatedAtEQ(before.CreatedAt),
+				message.IDLT(before.ID),
+			),
+		))
+	}
+	return q.
+		Order(ent.Desc(message.FieldCreatedAt), ent.Desc(message.FieldID)). // rides messages_room_created_idx
+		Limit(limit).
+		All(ctx)
+}
 ```
 
-```sql
--- server/db/query/conversations.sql
+**Why keyset, not `OFFSET`.** `OFFSET 10000 LIMIT 50` makes Postgres read and discard 10,000 rows every deep page — cost grows with page depth, and rows shift under you as new messages arrive, causing skips/dupes. Keyset carries the cursor and asks for rows *strictly older than it*: cost is constant regardless of depth, and because the cursor is an absolute position, concurrent inserts never cause skips. Ent's typed `Or/And` predicate compiles to exactly the `(created_at, id) < (…, …)` comparison you would hand-write, and `.Order(...).Limit(...)` rides the `(room_id, created_at DESC, id DESC)` index. The `(created_at, id)` tuple (not `created_at` alone) breaks ties when two messages share a timestamp — essential for correctness.
 
--- name: ListRecentConversations :many
--- One row per room the user belongs to, with the last message preview and unread count.
--- DISTINCT ON picks the newest message per room cheaply given the room/created index.
-SELECT
-    r.id            AS room_id,
-    r.kind          AS kind,
-    r.name          AS name,
-    last.body       AS last_body,
-    last.created_at AS last_at
-FROM room_members rm
-JOIN rooms r ON r.id = rm.room_id
-LEFT JOIN LATERAL (
-    SELECT body, created_at
-    FROM messages m
-    WHERE m.room_id = r.id
-    ORDER BY m.created_at DESC, m.id DESC
-    LIMIT 1
-) last ON true
-WHERE rm.user_id = sqlc.arg(user_id)
-ORDER BY last.created_at DESC NULLS LAST;
+### 6.3 Unread counts and read receipts **[I/A]**
+
+**Unread for a room** = messages newer than the user's last-read pointer, excluding their own. The membership row carries `last_read_message_id`; we resolve its `created_at` once, then `Count` messages after it. (If this shows up hot in `EXPLAIN`, denormalize a `last_read_at timestamptz` onto `room_members` and the count collapses to a single `CreatedAtGT` predicate — a clean later optimization.)
+
+```go
+func (s *Store) UnreadForRoom(ctx context.Context, roomID, userID uuid.UUID) (int, error) {
+	// 1) The user's last-read watermark in this room (nil ⇒ never read ⇒ count all).
+	mem, err := s.Ent.Membership.Query().
+		Where(membership.RoomID(roomID), membership.UserID(userID)).
+		Only(ctx)
+	if err != nil {
+		return 0, err
+	}
+	q := s.Ent.Message.Query().
+		Where(message.RoomID(roomID), message.SenderIDNEQ(userID)) // exclude my own
+	if mem.LastReadMessageID != nil {
+		last, err := s.Ent.Message.Get(ctx, *mem.LastReadMessageID)
+		if err != nil {
+			return 0, err
+		}
+		q = q.Where(message.CreatedAtGT(last.CreatedAt)) // strictly newer than the watermark
+	}
+	return q.Count(ctx)
+}
 ```
 
-### 6.4 Generated code, and using it with and without a transaction **[I]**
+**Marking read** moves the watermark *forward only* (scrolling up and back must never *decrease* what you've read) and upserts a `read_receipts` row so others can see "seen up to here." Both writes go in one `*ent.Tx`, and Ent's `OnConflict` gives us the receipt upsert without a second round-trip:
 
-`sqlc generate` produces `db/gen/` with a `Queries` struct, a `New(db DBTX)` constructor, and one method per query with typed params/results. You call it on the pool for autocommit reads, and inside a transaction via `WithTx` for the send flow.
+```go
+func (s *Store) MarkRead(ctx context.Context, roomID, userID, msgID uuid.UUID) error {
+	tx, err := s.Ent.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op after a successful Commit
+
+	target, err := tx.Message.Get(ctx, msgID)
+	if err != nil {
+		return err
+	}
+	mem, err := tx.Membership.Query().
+		Where(membership.RoomID(roomID), membership.UserID(userID)).
+		Only(ctx)
+	if err != nil {
+		return err
+	}
+	// Advance the pointer only if the target is strictly newer than the current one.
+	advance := mem.LastReadMessageID == nil
+	if mem.LastReadMessageID != nil {
+		if cur, err := tx.Message.Get(ctx, *mem.LastReadMessageID); err == nil &&
+			target.CreatedAt.After(cur.CreatedAt) {
+			advance = true
+		}
+	}
+	if advance {
+		if err := tx.Membership.Update().
+			Where(membership.RoomID(roomID), membership.UserID(userID)).
+			SetLastReadMessageID(msgID).
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+	// Upsert the receipt: one row per (room, user), always pointing at the latest read.
+	if err := tx.ReadReceipt.Create().
+		SetRoomID(roomID).SetUserID(userID).SetMessageID(msgID).SetReadAt(time.Now()).
+		OnConflictColumns(readreceipt.FieldRoomID, readreceipt.FieldUserID).
+		UpdateMessageID().
+		UpdateReadAt().
+		Exec(ctx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+```
+
+### 6.4 The one hard read — recent conversations via the raw-SQL escape hatch **[A]**
+
+The sidebar wants, per room the user belongs to, the room plus its **latest message** preview, ordered by most-recent activity. "Latest message per room" is a `DISTINCT ON` / `LATERAL` shape Ent's builder doesn't express directly — the honest case for Ent's **raw-SQL escape hatch**. `.Modify(func(s *sql.Selector))` (enable Ent's `sql/modifier` codegen feature — [§5](#5-ent-schema--the-relation-graph)) lets us write that SQL by hand while still going through the *same* Ent client, transaction, and pool — no second library, no second connection.
+
+```go
+// ConversationRow is a plain struct we scan the custom SELECT into.
+type ConversationRow struct {
+	RoomID   uuid.UUID  `json:"room_id"`
+	Kind     string     `json:"kind"`
+	Name     *string    `json:"name"`
+	LastBody *string    `json:"last_body"`
+	LastAt   *time.Time `json:"last_at"`
+}
+
+func (s *Store) RecentConversations(ctx context.Context, userID uuid.UUID) ([]ConversationRow, error) {
+	var rows []ConversationRow
+	// Base query is Ent over room_members; the modifier reshapes it into the sidebar
+	// query with a correlated "newest message per room" join. Still parameterized,
+	// still on the shared pool.
+	err := s.Ent.Membership.Query().
+		Where(membership.UserID(userID)).
+		Modify(func(sel *sql.Selector) {
+			r := sql.Table("rooms").As("r")
+			m := sql.Table("messages").As("last")
+			sel.Join(r).On(sel.C("room_id"), r.C("id"))
+			sel.LeftJoin(m).OnP(sql.P(func(b *sql.Builder) {
+				b.WriteString("last.room_id = r.id AND last.created_at = (")
+				b.WriteString("SELECT max(created_at) FROM messages WHERE room_id = r.id)")
+			}))
+			sel.Select(
+				r.C("id"), r.C("kind"), r.C("name"),
+				m.C("body"), m.C("created_at"),
+			).OrderBy(sql.Desc(m.C("created_at")))
+		}).
+		Scan(ctx, &rows)
+	return rows, err
+}
+```
+
+> **When to reach for `Modify`.** Only when the builder genuinely can't say what you mean — window functions, `DISTINCT ON`, recursive CTEs. It is still parameterized and still runs on your pool, but you lose compile-time field checking *inside* the raw fragment, so keep those fragments small, few, and covered by a test. Everything else in this app stays in the typed builder.
+
+### 6.5 Using it with and without a transaction **[I]**
+
+For a plain read you call straight through the client on the shared pool (autocommit). For a write that must be atomic you open an `*ent.Tx`, do the work on it, and `Commit`. Note that unlike a `pgx.Tx`, an Ent transaction's `Commit()`/`Rollback()` take **no context** — the context you passed to `client.Tx(ctx)` governs the whole transaction.
 
 ```go
 // A plain read on the shared pool (autocommit): the history endpoint.
-rows, err := store.Q.ListRoomHistory(ctx, gen.ListRoomHistoryParams{
-	RoomID:          roomID,
-	Limit:           50,
-	BeforeCreatedAt: cursorTime, // *time.Time — nil on the first page
-	BeforeID:        cursorID,   // *uuid.UUID — nil on the first page
-})
+msgs, err := store.RoomHistory(ctx, roomID, cursor, 50)
 
-// Inside a transaction: the message send (persist + read-back on idempotent retry).
-tx, err := store.Pool.Begin(ctx)
+// An atomic write: the message send opens an Ent transaction (see §12).
+tx, err := store.Ent.Tx(ctx)
 if err != nil { /* ... */ }
-defer tx.Rollback(ctx) // no-op after a successful Commit
-qtx := store.Q.WithTx(tx) // a Queries bound to THIS transaction
-msg, err := qtx.InsertMessage(ctx, gen.InsertMessageParams{ /* ... */ })
-// ... on empty (conflict), qtx.SelectMessageByIdem(...) ...
-if err := tx.Commit(ctx); err != nil { /* ... */ }
+defer tx.Rollback() // no-op after a successful Commit
+msg, err := store.InsertMessage(ctx, tx, newMsg) // idempotent insert on THIS tx
+if err != nil { /* the defer rolls back */ return err }
+if err := tx.Commit(); err != nil { /* ... */ }
 ```
 
-> **Gotcha — regenerate after every schema change.** Because sqlc's types come from the goose migrations, adding a column in a goose file and forgetting `sqlc generate` means your Go still compiles against the *old* row shape and silently ignores the new column. Wire `sqlc generate` into the [Air](#23-deployment--docker-compose--migrations-on-deploy) loop and CI so it can never lag. The same discipline applies to `go generate ./ent` — one schema change, two regenerations.
+> **Gotcha — regenerate after every schema change.** Ent's typed client is generated from `ent/schema`, which you keep in step with the goose migrations. Add a column in a goose migration, mirror it in the Ent schema, and run `go generate ./ent/...` — forget the regen and the new field simply won't exist on the builder. Wire `go generate ./ent/...` into the [Air](#23-deployment--docker-compose--migrations-on-deploy) loop and CI so the generated client can never lag the schema. **One schema change, one regeneration** — the single-tool payoff over juggling two code generators.
 
 ---
 ## 7. Authentication — Argon2id, JWT Access & Refresh Rotation
@@ -1388,7 +1513,7 @@ Two layers, checked in order:
 
 ### 8.2 Enforcing it in BOTH layers **[I/A]**
 
-The rule from [§2.2](#22-why-not-just-one-tool-an-honest-accounting) — Ent owns membership, sqlc owns messages — means authorization must be enforced in *both* query layers, consistently. Ent-side we query the `Membership`; sqlc-side we fold the membership predicate directly into the `WHERE` clause so a non-member's query returns zero rows *at the database*, not filtered in Go.
+Even though Ent owns every read and write, authorization is enforced at **two points** for defense in depth: the handler checks membership before doing anything, and the history query itself carries a membership predicate so a non-member's request returns zero rows *at the database*, never filtered in Go. Both are Ent queries — the first a `Membership` lookup, the second an `EXISTS` predicate folded into the message query.
 
 The Ent-side check, reused by every room route:
 
@@ -1441,25 +1566,29 @@ func RequireRole(ctx context.Context, c *ent.Client, roomID, userID uuid.UUID, a
 }
 ```
 
-And the sqlc-side belt-and-braces: even the history query itself only returns rows if you're a member. We add a membership `EXISTS` guard so an attacker who somehow reaches the query with a foreign room id gets nothing:
+And the query-level belt-and-braces: the history read returns rows only if the caller is a member. We fold a membership `EXISTS` into the Ent query with `HasRoomWith(room.HasMembersWith(...))`, so an attacker who somehow reaches the query with a foreign room id gets nothing:
 
-```sql
--- name: ListRoomHistoryAuthz :many
--- Identical to ListRoomHistory but returns rows ONLY if the caller is a member.
--- Defense in depth: authz is also enforced at the handler, but the query refuses too.
-SELECT m.id, m.room_id, m.sender_id, m.body, m.client_msg_id, m.created_at
-FROM messages m
-WHERE m.room_id = sqlc.arg(room_id)
-  AND EXISTS (
-      SELECT 1 FROM room_members rm
-      WHERE rm.room_id = m.room_id AND rm.user_id = sqlc.arg(user_id)
-  )
-  AND (
-    sqlc.narg(before_created_at)::timestamptz IS NULL
-    OR (m.created_at, m.id) < (sqlc.narg(before_created_at)::timestamptz, sqlc.narg(before_id)::uuid)
-  )
-ORDER BY m.created_at DESC, m.id DESC
-LIMIT sqlc.arg(lim);
+```go
+// RoomHistoryAuthz is RoomHistory (§6.2) plus a membership guard: it returns rows
+// ONLY if userID is a member of the room. Defense in depth — the handler already
+// checked, but the query refuses too. Ent compiles HasRoomWith(...HasMembersWith...)
+// to a nested EXISTS, so the filter runs at the database, not in Go.
+func (s *Store) RoomHistoryAuthz(ctx context.Context, roomID, userID uuid.UUID, before *Cursor, limit int) ([]*ent.Message, error) {
+	q := s.Ent.Message.Query().Where(
+		message.RoomID(roomID),
+		message.HasRoomWith(room.HasMembersWith(membership.UserID(userID))),
+	)
+	if before != nil {
+		q = q.Where(message.Or(
+			message.CreatedAtLT(before.CreatedAt),
+			message.And(message.CreatedAtEQ(before.CreatedAt), message.IDLT(before.ID)),
+		))
+	}
+	return q.
+		Order(ent.Desc(message.FieldCreatedAt), ent.Desc(message.FieldID)).
+		Limit(limit).
+		All(ctx)
+}
 ```
 
 > **Why enforce twice?** The handler check gives a clean 404/403 and avoids the query when possible; the in-query `EXISTS` is a **second wall** so a future refactor that forgets the handler check still can't leak data. Defense in depth is not paranoia here — a single missed membership check is a reportable breach. The realtime path enforces the *same* membership check before every broadcast ([§12.2](#12-the-message-send-flow-end-to-end)).
@@ -1497,7 +1626,7 @@ func (s *RoomService) RemoveMember(ctx context.Context, roomID, actorID, targetI
 
 ## 9. The REST API with Gin
 
-REST carries everything the user initiates and can await: auth, room CRUD, membership/invites, and **message history** (the one high-traffic read, keyset-paginated via sqlc). Realtime *sending* is on the WebSocket ([§12](#12-the-message-send-flow-end-to-end)); REST is the query and command surface around it. For Gin itself — router, `*gin.Context`, binding, middleware — see the [Gin guide](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md).
+REST carries everything the user initiates and can await: auth, room CRUD, membership/invites, and **message history** (the one high-traffic read, keyset-paginated via Ent). Realtime *sending* is on the WebSocket ([§12](#12-the-message-send-flow-end-to-end)); REST is the query and command surface around it. For Gin itself — router, `*gin.Context`, binding, middleware — see the [Gin guide](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md).
 
 ### 9.1 Router assembly **[I]**
 
@@ -1533,10 +1662,10 @@ func NewRouter(cfg *config.Config, store *db.Store, hub *ws.Hub) *gin.Engine {
 		p := api.Group("")
 		p.Use(authSvc.RequireAuth())
 		p.GET("/me", h.Me)
-		p.GET("/conversations", h.ListConversations)     // sidebar (sqlc)
+		p.GET("/conversations", h.ListConversations)     // sidebar (Ent + raw modifier)
 		p.POST("/rooms", h.CreateRoom)                    // Ent
 		p.GET("/rooms/:id", h.GetRoom)                    // Ent + membership
-		p.GET("/rooms/:id/messages", h.ListMessages)      // sqlc keyset
+		p.GET("/rooms/:id/messages", h.ListMessages)      // Ent keyset
 		p.POST("/rooms/:id/members", h.AddMember)         // Ent + RBAC
 		p.DELETE("/rooms/:id/members/:uid", h.RemoveMember)
 		p.POST("/dms/:userId", h.OpenDM)                  // find-or-create dm room
@@ -1551,7 +1680,7 @@ func NewRouter(cfg *config.Config, store *db.Store, hub *ws.Hub) *gin.Engine {
 
 ### 9.2 DTOs — wire shapes separate from entities **[I]**
 
-Never serialize an Ent entity or a sqlc row straight to the client. Define explicit **DTOs**: they are the public contract, they omit sensitive fields (`password_hash`!), and they decouple the API from internal schema changes. The same field names appear in the TypeScript types ([§17](#17-frontend-rest-data-layer-with-tanstack-query)).
+Never serialize an Ent entity straight to the client. Define explicit **DTOs**: they are the public contract, they omit sensitive fields (`password_hash`!), and they decouple the API from internal schema changes. The same field names appear in the TypeScript types ([§17](#17-frontend-rest-data-layer-with-tanstack-query)).
 
 ```go
 // internal/rest/dto.go
@@ -1588,7 +1717,7 @@ type HistoryPageDTO struct {
 
 ### 9.3 The keyset history endpoint **[I/A]**
 
-The cursor is **opaque** to the client — we base64-encode `created_at|id` so the frontend treats it as a token and can't fabricate positions. The handler decodes it, runs the sqlc authz'd query, and emits the next cursor from the last row.
+The cursor is **opaque** to the client — we base64-encode `created_at|id` so the frontend treats it as a token and can't fabricate positions. The handler decodes it, runs the Ent authz'd query ([§8.2](#8-rbac--authorization--room-roles-and-idor-defense)), and emits the next cursor from the last row.
 
 ```go
 // internal/rest/messages.go
@@ -1601,23 +1730,18 @@ func (h *Handlers) ListMessages(c *gin.Context) {
 	}
 	limit := clampLimit(c.Query("limit"), 50, 100) // default 50, hard cap 100
 
-	var beforeAt *time.Time
-	var beforeID *uuid.UUID
+	var before *Cursor // type Cursor struct{ CreatedAt time.Time; ID uuid.UUID }
 	if cur := c.Query("cursor"); cur != "" {
-		beforeAt, beforeID, err = decodeCursor(cur)
+		at, id, err := decodeCursor(cur)
 		if err != nil {
 			c.JSON(400, gin.H{"error": "bad cursor"})
 			return
 		}
+		before = &Cursor{CreatedAt: *at, ID: *id} // the (created_at, id) keyset position
 	}
 
-	rows, err := h.store.Q.ListRoomHistoryAuthz(c, gen.ListRoomHistoryAuthzParams{
-		RoomID:          roomID,
-		UserID:          userID, // the EXISTS guard: non-members get zero rows
-		BeforeCreatedAt: beforeAt,
-		BeforeID:        beforeID,
-		Lim:             int32(limit),
-	})
+	// Ent keyset query with the in-query membership guard (§8.2): non-members get zero rows.
+	rows, err := h.store.RoomHistoryAuthz(c, roomID, userID, before, limit)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "server error"})
 		return
@@ -2094,7 +2218,7 @@ The `v` field and the `chat.v1` subprotocol are your evolution levers. Rules we 
 
 ## 12. The Message Send Flow End-to-End
 
-Now we assemble [§6](#6-sqlc--type-safe-hot-path-queries) (the idempotent insert), [§8](#8-rbac--authorization--room-roles-and-idor-defense) (membership authz), [§10](#10-realtime-with-coderwebsocket--the-hub-architecture) (the Hub), and [§11](#11-the-realtime-protocol--envelope--events) (the protocol) into the single most important code path: a user sends a message and everyone in the room sees it, exactly once, durably.
+Now we assemble [§6](#6-ent-queries--messages-history-unread--receipts) (the idempotent insert), [§8](#8-rbac--authorization--room-roles-and-idor-defense) (membership authz), [§10](#10-realtime-with-coderwebsocket--the-hub-architecture) (the Hub), and [§11](#11-the-realtime-protocol--envelope--events) (the protocol) into the single most important code path: a user sends a message and everyone in the room sees it, exactly once, durably.
 
 ### 12.1 The steps, named **[A]**
 
@@ -2102,7 +2226,7 @@ When a `message.send` envelope arrives on a client's read pump, the server:
 
 1. **Authorizes** — is `sender` a member of `room_id`? (Membership check; non-members are silently dropped or error'd — never broadcast.)
 2. **Validates** — non-empty after trim, within the size cap, correct types.
-3. **Persists idempotently** — `InsertMessage` inside a `pgx.Tx`, keyed by `client_msg_id`; on conflict, read back the existing row (a retry).
+3. **Persists idempotently** — `InsertMessage` inside an `ent.Tx`, keyed by `client_msg_id`; on the unique-constraint error, read back the existing row (a retry).
 4. **Acks the sender** — `message.ack` with the server id + timestamp, keyed by `client_msg_id`, so the sender's optimistic bubble becomes confirmed.
 5. **Fans out** — `message.new` to every member's connections across the whole cluster via the Redis backplane ([§15](#15-scaling-out--the-redis-pubsub-backplane--nginx)), which lands as `BroadcastLocal` on each node.
 6. **Bumps unread** — recipients' unread counts increase; the frontend derives this from the new message vs. their last-read pointer ([§14](#14-read-receipts--unread-counts)).
@@ -2148,9 +2272,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-
-	"github.com/google/uuid"
-	gen "chat/db/gen"
 )
 
 type sendPayload struct {
@@ -2185,16 +2306,17 @@ func (h *Hub) handleSend(ctx context.Context, c *Client, env *Envelope) {
 		return
 	}
 
-	// (3) PERSIST IDEMPOTENTLY inside a transaction.
-	tx, err := h.store.Pool.Begin(ctx)
+	// (3) PERSIST IDEMPOTENTLY inside an Ent transaction. InsertMessage (§6.2) does the
+	// create and, on the unique-index constraint error (a retry with the same
+	// client_msg_id), reads back the ORIGINAL row — so a resend yields the same id.
+	tx, err := h.store.Ent.Tx(ctx)
 	if err != nil {
 		c.sendError(&cmid, "INTERNAL", "db")
 		return
 	}
-	defer tx.Rollback(ctx) // no-op after Commit
-	q := h.store.Q.WithTx(tx)
+	defer tx.Rollback() // no-op after Commit
 
-	row, err := q.InsertMessage(ctx, gen.InsertMessageParams{
+	msg, err := h.store.InsertMessage(ctx, tx, NewMessage{
 		RoomID:      roomID,
 		SenderID:    c.userID,
 		Body:        body,
@@ -2204,27 +2326,16 @@ func (h *Hub) handleSend(ctx context.Context, c *Client, env *Envelope) {
 		c.sendError(&cmid, "INTERNAL", "insert")
 		return
 	}
-	// InsertMessage RETURNs nothing on ON CONFLICT DO NOTHING (a retry). Read it back
-	// so a resend still gets a correct ack with the ORIGINAL id — exactly-once effect.
-	if row.ID == uuid.Nil {
-		row, err = q.SelectMessageByIdem(ctx, gen.SelectMessageByIdemParams{
-			RoomID: roomID, SenderID: c.userID, ClientMsgID: cmid,
-		})
-		if err != nil {
-			c.sendError(&cmid, "INTERNAL", "readback")
-			return
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(); err != nil {
 		c.sendError(&cmid, "INTERNAL", "commit")
 		return
 	}
 
-	dto := toWSMessageDTO(row)
+	dto := toWSMessageDTO(msg)
 
 	// (4) ACK the sender (keyed by client_msg_id → reconciles the optimistic bubble).
 	if ackData, err := encode("message.ack", &roomID, &cmid, ackPayload{
-		ID: row.ID, CreatedAt: row.CreatedAt,
+		ID: msg.ID, CreatedAt: msg.CreatedAt,
 	}); err == nil {
 		c.enqueue(ackData)
 	}
@@ -2243,7 +2354,7 @@ func (h *Hub) handleSend(ctx context.Context, c *Client, env *Envelope) {
 
 Three properties this flow guarantees, and *how*:
 
-- **Exactly-once persistence** comes from the unique index `(room_id, sender_id, client_msg_id)` plus `ON CONFLICT DO NOTHING` + read-back. A client that resends after a dropped ack gets the *same* stored row and the *same* ack — no duplicate message. The client generates `client_msg_id` (a UUID) *once* per composed message and reuses it across retries ([§18.5](#18-the-frontend-websocket-client)).
+- **Exactly-once persistence** comes from the unique index `(room_id, sender_id, client_msg_id)`: a duplicate insert raises a constraint error that `InsertMessage` ([§6.2](#6-ent-queries--messages-history-unread--receipts)) catches and turns into a read-back of the original row. A client that resends after a dropped ack gets the *same* stored row and the *same* ack — no duplicate message. The client generates `client_msg_id` (a UUID) *once* per composed message and reuses it across retries ([§18.5](#18-the-frontend-websocket-client)).
 - **At-least-once delivery to recipients** is what the fan-out provides; combined with the recipient deduping by message `id`, the *effect* is exactly-once display. A recipient that was briefly disconnected and missed the `message.new` fills the gap by **refetching history on reconnect** ([§18.4](#18-the-frontend-websocket-client)) — the socket is a freshness optimization, never the source of truth.
 - **Per-room ordering** is defined by `(created_at, id)` — the same tuple the keyset index and cursor use. Because the DB assigns `created_at` at insert and the fan-out carries the persisted row, all clients converge on the DB's order even if frames arrive slightly reordered; the client inserts by `(created_at, id)`, not arrival order.
 
@@ -2392,16 +2503,16 @@ func (h *Hub) publishPresence(ctx context.Context, c *Client, status string) {
 
 ## 14. Read Receipts & Unread Counts
 
-Unread counts and read receipts are two views of the same fact — **how far each user has read in each room** — surfaced differently: unread counts drive *your own* sidebar badges; receipts show *others* that you've seen their messages. Both are anchored by the per-membership pointer `room_members.last_read_message_id` and the `read_receipts` table from [§4.5](#4-the-database-schema-via-goose-migrations), and both use the sqlc queries from [§6.3](#6-sqlc--type-safe-hot-path-queries).
+Unread counts and read receipts are two views of the same fact — **how far each user has read in each room** — surfaced differently: unread counts drive *your own* sidebar badges; receipts show *others* that you've seen their messages. Both are anchored by the per-membership pointer `room_members.last_read_message_id` and the `read_receipts` table from [§4.5](#4-the-database-schema-via-goose-migrations), and both use the Ent queries from [§6.3](#6-ent-queries--messages-history-unread--receipts).
 
 ### 14.1 The model: one pointer, two consumers **[I]**
 
 Rather than store a row per (user, message) marking each as read — which explodes in volume — we store a single **high-water mark** per (room, user): the id of the newest message that user has read. Everything derives from it:
 
-- **Your unread count** for a room = messages newer than *your* pointer, not sent by you (`CountUnreadForRoom`).
+- **Your unread count** for a room = messages newer than *your* pointer, not sent by you (`UnreadForRoom`, [§6.3](#6-ent-queries--messages-history-unread--receipts)).
 - **What others have read** = *their* pointers; the "seen" checkmark under a message appears when some other member's pointer is at-or-past that message.
 
-Moving the pointer is monotonic (forward only) — scrolling up and back down must never *decrease* what you've read. The `MarkRoomRead` query enforces this with a guard comparing timestamps ([§6.3](#6-sqlc--type-safe-hot-path-queries)).
+Moving the pointer is monotonic (forward only) — scrolling up and back down must never *decrease* what you've read. The `MarkRead` method enforces this with a forward-only guard comparing timestamps ([§6.3](#6-ent-queries--messages-history-unread--receipts)).
 
 ### 14.2 Marking read — REST and realtime **[I/A]**
 
@@ -2416,7 +2527,6 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	gen "chat/db/gen"
 )
 
 type receiptPayload struct {
@@ -2433,16 +2543,11 @@ func (h *Hub) handleReceipt(ctx context.Context, c *Client, env *Envelope) {
 	}
 	roomID := *env.RoomID
 
-	// Move the high-water mark forward (idempotent, monotonic) and upsert the receipt.
-	// Both writes are sqlc — this is the hot path, not graph CRUD.
-	if _, err := h.store.Q.MarkRoomRead(ctx, gen.MarkRoomReadParams{
-		RoomID: roomID, UserID: c.userID, MessageID: p.MessageID,
-	}); err != nil {
+	// Advance the high-water mark (forward-only) AND upsert the receipt in one Ent
+	// transaction — MarkRead (§6.3) does both. This is a write of durable state.
+	if err := h.store.MarkRead(ctx, roomID, c.userID, p.MessageID); err != nil {
 		return
 	}
-	_ = h.store.Q.UpsertReadReceipt(ctx, gen.UpsertReadReceiptParams{
-		RoomID: roomID, UserID: c.userID, MessageID: p.MessageID,
-	})
 
 	// Broadcast so OTHER members see the "seen" update live. The server stamps user_id
 	// from the authenticated identity — never trust a client-claimed reader.
@@ -3594,7 +3699,7 @@ Wrap the send handler and history query with timers; alert on p99 `message_persi
 
 ### 22.3 Testing the REST layer with httptest **[A]**
 
-REST handlers test cleanly with `net/http/httptest` against the Gin router, using a real (throwaway) Postgres so the sqlc/Ent queries actually run. The pattern: build the router with a test `Store`, issue a request, assert status + body.
+REST handlers test cleanly with `net/http/httptest` against the Gin router, using a real (throwaway) Postgres so the Ent queries actually run. The pattern: build the router with a test `Store`, issue a request, assert status + body.
 
 ```go
 // internal/rest/messages_test.go
@@ -3674,29 +3779,27 @@ func dial(t *testing.T, url, token string) *websocket.Conn {
 
 ### 22.5 Transaction-rollback DB tests **[A]**
 
-To test a query in isolation without polluting the database, run each test inside a transaction and **roll it back** at the end. Because sqlc's `Queries` accepts any `DBTX`, you hand it a `pgx.Tx` and never commit. This makes DB tests fast and hermetic — no cleanup, perfect isolation, parallelizable.
+To test a query in isolation without polluting the database, run each test inside an **Ent transaction** and **roll it back** at the end — never commit. An `*ent.Tx` exposes the same builders as the client, so the code under test runs unchanged and nothing persists. This makes DB tests fast and hermetic — no cleanup, perfect isolation, parallelizable.
 
 ```go
 // internal/db/tx_test.go
 func TestInsertMessage_Idempotent(t *testing.T) {
-	tx, err := testPool.Begin(context.Background())
+	ctx := context.Background()
+	tx, err := testStore.Ent.Tx(ctx)
 	if err != nil { t.Fatal(err) }
-	defer tx.Rollback(context.Background()) // ALWAYS rollback — never persists
+	defer tx.Rollback() // ALWAYS rollback — never persists
 
-	q := gen.New(tx) // sqlc bound to the tx
 	room, sender := seedRoomTx(t, tx), seedUserTx(t, tx)
 	cmid := uuid.New()
 
-	m1, _ := q.InsertMessage(ctx, gen.InsertMessageParams{RoomID: room, SenderID: sender, Body: "x", ClientMsgID: cmid})
-	// Second insert with the SAME client_msg_id conflicts (RETURNING empty).
-	m2, _ := q.InsertMessage(ctx, gen.InsertMessageParams{RoomID: room, SenderID: sender, Body: "x", ClientMsgID: cmid})
-	if m2.ID != uuid.Nil {
-		t.Fatal("expected ON CONFLICT DO NOTHING to return no row on retry")
-	}
-	// Read-back returns the ORIGINAL row — the exactly-once guarantee (§12.4).
-	back, _ := q.SelectMessageByIdem(ctx, gen.SelectMessageByIdemParams{RoomID: room, SenderID: sender, ClientMsgID: cmid})
-	if back.ID != m1.ID {
-		t.Fatal("read-back must return the original message")
+	m1, err := testStore.InsertMessage(ctx, tx, NewMessage{RoomID: room, SenderID: sender, Body: "x", ClientMsgID: cmid})
+	if err != nil { t.Fatal(err) }
+	// Second insert with the SAME client_msg_id hits the unique index; InsertMessage
+	// catches the constraint error and reads back the ORIGINAL row (§6.2, §12.4).
+	m2, err := testStore.InsertMessage(ctx, tx, NewMessage{RoomID: room, SenderID: sender, Body: "x", ClientMsgID: cmid})
+	if err != nil { t.Fatal(err) }
+	if m2.ID != m1.ID {
+		t.Fatal("idempotent retry must return the original message id")
 	}
 }
 ```
@@ -3714,11 +3817,11 @@ func TestInsertMessage_Idempotent(t *testing.T) {
 
 ## 23. Deployment — Docker, Compose & Migrations-on-Deploy
 
-We ship the whole stack as containers behind one Nginx origin: the Go API, Postgres, Redis, the Next.js app, and Nginx. Migrations run advisory-locked on deploy. Dev uses **Air** with `sqlc generate` + `goose up` wired into the reload loop. See [Docker](DOCKER_GUIDE.md) and [Nginx](NGINX_GUIDE.md).
+We ship the whole stack as containers behind one Nginx origin: the Go API, Postgres, Redis, the Next.js app, and Nginx. Migrations run advisory-locked on deploy. Dev uses **Air** with `go generate ./ent/...` + `goose up` wired into the reload loop. See [Docker](DOCKER_GUIDE.md) and [Nginx](NGINX_GUIDE.md).
 
 ### 23.1 The Go API Dockerfile (multi-stage) **[A]**
 
-A multi-stage build compiles a static binary in a full Go image, then copies just the binary into a tiny runtime image. The migrations are embedded ([§4.6](#4-the-database-schema-via-goose-migrations)) so no files need copying; the generated sqlc/Ent code is compiled in.
+A multi-stage build compiles a static binary in a full Go image, then copies just the binary into a tiny runtime image. The migrations are embedded ([§4.6](#4-the-database-schema-via-goose-migrations)) so no files need copying; the generated Ent code is compiled in.
 
 ```dockerfile
 # server/Dockerfile
@@ -3728,7 +3831,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Codegen must already be committed (sqlc + ent). Build a static binary.
+# Codegen (ent) must already be committed. Build a static binary.
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 # ---- runtime stage ----
@@ -3831,7 +3934,7 @@ Either way, **migrations must be backward-compatible with the currently-running 
 
 ### 23.5 The `.air.toml` dev loop with codegen **[A]**
 
-In development, Air watches for changes and rebuilds. We hook codegen in so editing a goose migration or a sqlc query regenerates before the rebuild — the two-tool discipline from [§2.2](#22-why-not-just-one-tool-an-honest-accounting) made automatic. A pre-build command runs `sqlc generate`; `goose up` runs at app start via `MigrateUp`. Ent codegen runs on schema edits.
+In development, Air watches for changes and rebuilds. We hook Ent codegen in so editing an Ent schema regenerates the client before the rebuild; `goose up` runs at app start via `MigrateUp`. One code generator, one regen step — the single-tool payoff from [§2.2](#22-why-ent-for-everything--an-honest-accounting).
 
 ```toml
 # server/.air.toml
@@ -3839,21 +3942,21 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-# Regenerate type-safe query code before each rebuild so sqlc/goose never drift.
-pre_cmd = ["sqlc generate"]
+# Regenerate the Ent client before each rebuild so schema and client never drift.
+pre_cmd = ["go generate ./ent/..."]
 cmd = "go build -o ./tmp/api ./cmd/api"
 bin = "./tmp/api"
-# Watch Go, the goose migrations, and the sqlc query files.
+# Watch Go, the goose migrations, and the Ent schema files.
 include_ext = ["go", "sql", "toml"]
 include_dir = ["cmd", "internal", "db", "ent"]
-exclude_dir = ["tmp", "db/gen"]   # don't loop on generated output
+exclude_dir = ["tmp"]   # ent/*.go is generated but compiled; nothing to skip here
 delay = 400
 
 [log]
 time = true
 ```
 
-> **⚡ Version note — commit generated code.** Both sqlc (`db/gen`) and Ent (`ent/*`) output is committed to the repo and compiled in the Docker build ([§23.1](#23-deployment--docker-compose--migrations-on-deploy)), so CI/CD needs no codegen step and builds are reproducible. Air regenerates locally on save; CI verifies the committed output is up to date (run `sqlc generate` + `go generate ./ent` and fail if `git diff` is non-empty). This catches "forgot to regenerate" before it merges.
+> **⚡ Version note — commit generated code.** The Ent output (`ent/*`) is committed to the repo and compiled in the Docker build ([§23.1](#23-deployment--docker-compose--migrations-on-deploy)), so CI/CD needs no codegen step and builds are reproducible. Air regenerates locally on save; CI verifies the committed output is up to date (run `go generate ./ent/...` and fail if `git diff` is non-empty). This catches "forgot to regenerate" before it merges.
 
 ### 23.6 Dev vs. prod config differences **[I]**
 
@@ -3871,7 +3974,7 @@ time = true
 
 ## 24. Maintainability — Contracts & Keeping Tools in Sync
 
-This system has more moving parts than a single-tool app, so maintainability is a first-class concern, not an afterthought. Three disciplines keep it healthy over time: clean **layering**, a single honest **TS↔Go contract**, and a routine for keeping **goose/sqlc/Ent** and the **WS protocol** in sync.
+This system has more moving parts than a single-tool app, so maintainability is a first-class concern, not an afterthought. Three disciplines keep it healthy over time: clean **layering**, a single honest **TS↔Go contract**, and a routine for keeping **goose & Ent** and the **WS protocol** in sync.
 
 ### 24.1 Layering & where logic lives **[I]**
 
@@ -3879,7 +3982,7 @@ Each layer has one job, and dependencies point one direction (handlers → servi
 
 - **Transport** (`rest/` handlers, `ws/` dispatch) — parse/validate input, call a service, shape the response/envelope. No business rules here beyond validation.
 - **Services** (`auth/`, `rbac/`, room service) — the business rules: authorization, the last-owner guard, DM find-or-create, refresh rotation. This is where invariants live and what tests target.
-- **Data** (`db/` with sqlc + Ent over the one pool) — queries only. The write-ownership rule ([§2.2](#22-why-not-just-one-tool-an-honest-accounting)) keeps each table's mutations in one layer.
+- **Data** (`ent/` + `db/` — Ent over the one pool, goose owning the schema) — queries and migrations only, no business logic.
 
 The realtime handlers are just another transport that calls the same services — the send handler ([§12.3](#12-the-message-send-flow-end-to-end)) validates then persists via the data layer exactly as a REST handler would. Keeping the Hub thin (routing + fan-out) and pushing rules into services means realtime and REST can't diverge in behavior.
 
@@ -3893,22 +3996,21 @@ The DTOs ([§9.2](#9-the-rest-api-with-gin)) and the envelope/payloads ([§11](#
 
 Whichever you pick, the rule is: **the wire shape has exactly one definition**, and both sides derive from it. Field names use the same casing convention (we use `camelCase` in JSON via Go tags to match idiomatic TS).
 
-### 24.3 Keeping goose / sqlc / Ent in sync **[I/A]**
+### 24.3 Keeping goose & Ent in sync **[I/A]**
 
 The one workflow to internalize, every schema change:
 
 1. **Write a goose migration** (`db/migrations/NNNNN_*.sql`) — the schema changes *here first, always*.
-2. **Regenerate sqlc** (`sqlc generate`) — because `schema:` points at the goose dir, sqlc rebuilds its types from the new DDL; any query now inconsistent fails to generate (a good early error).
-3. **Update the Ent schema** to mirror the new columns ([§5.1](#5-ent-schema--the-relation-graph)) and **`go generate ./ent`** — only for tables Ent touches.
-4. **Update DTOs and TS types** if the change is visible on the wire.
+2. **Update the Ent schema** to mirror the new columns ([§5.1](#5-ent-schema--the-relation-graph)) and run **`go generate ./ent/...`** — the typed client rebuilds; any code using a removed or renamed field now fails to compile (a good early error).
+3. **Update DTOs and TS types** if the change is visible on the wire.
 
-CI enforces steps 2–3 by failing if regenerated output differs from committed ([§23.5](#23-deployment--docker-compose--migrations-on-deploy)). This is the tax for the two-layer data design; the Air `pre_cmd` and CI check make it nearly free. If your team can't hold this routine, that's the signal to collapse to one data tool ([§2.2](#22-why-not-just-one-tool-an-honest-accounting)).
+CI enforces step 2 by failing if regenerated output differs from committed ([§23.5](#23-deployment--docker-compose--migrations-on-deploy)). Because there is a *single* code generator, this stays a short, mechanical routine — the payoff of the one-data-tool decision in [§2.2](#22-why-ent-for-everything--an-honest-accounting); the Air `pre_cmd` and CI check make it nearly free.
 
 ### 24.4 Versioning the WS protocol over time **[I]**
 
 The `v` field and `chat.vN` subprotocol ([§11.3](#11-the-realtime-protocol--envelope--events)) are your evolution mechanism. In practice: add fields and event types freely (additive, no bump); for a breaking change, ship the server accepting both `chat.v1` and `chat.v2` and translating, deploy the new client, then retire `v1` once telemetry shows old clients have drained. Because clients auto-reconnect and refetch, a rolling protocol upgrade is invisible to users. Keep a short `CHANGELOG` of protocol changes next to `protocol.go` and `types.ts` so the two sides' history is auditable.
 
-> **Best practice — make the right thing the easy thing.** Every sync discipline above is enforced by automation (Air regen, CI diff-check, one types file) rather than memory. A maintainable system isn't one where everyone remembers the rules; it's one where forgetting the rules fails the build. Invest the afternoon to wire those checks and the two-tool data layer stops being a burden.
+> **Best practice — make the right thing the easy thing.** Every sync discipline above is enforced by automation (Air regen, CI diff-check, one types file) rather than memory. A maintainable system isn't one where everyone remembers the rules; it's one where forgetting the rules fails the build. Invest the afternoon to wire those checks and the generated data layer stops being a burden.
 
 ---
 ## 25. End-to-End Trace — A User Sends a Message
@@ -3925,7 +4027,7 @@ Everything in this guide converges on one moment. Here we walk a single message 
 6. **Dispatch → send handler.** `dispatch` routes `message.send` to `handleSend` ([§12.3](#12-the-message-send-flow-end-to-end)).
 7. **Authorize.** `c.inRoom("42")` confirms Alice is a member — the realtime IDOR guard ([§21.4](#21-banking-grade-security-hardening)). A non-member would get `message.error{FORBIDDEN}` and stop here.
 8. **Validate.** Body trimmed, non-empty, ≤ 8 KiB ([§21.5](#21-banking-grade-security-hardening)); rate limiter checked.
-9. **Persist idempotently.** Inside a `pgx.Tx`, `qtx.InsertMessage` ([§6.2](#6-sqlc--type-safe-hot-path-queries)) inserts keyed by `(room_id, sender_id, client_msg_id)`. First time → a row with a server `id` and `created_at`. (A retry with the same `clientMsgId` would `ON CONFLICT DO NOTHING`, and the read-back returns the original — exactly-once, [§12.4](#12-the-message-send-flow-end-to-end).) `tx.Commit`.
+9. **Persist idempotently.** Inside an `ent.Tx`, `store.InsertMessage` ([§6.2](#6-ent-queries--messages-history-unread--receipts)) inserts keyed by `(room_id, sender_id, client_msg_id)`. First time → a row with a server `id` and `created_at`. (A retry with the same `clientMsgId` hits the unique index; `InsertMessage` catches the constraint error and reads back the original — exactly-once, [§12.4](#12-the-message-send-flow-end-to-end).) `tx.Commit()`.
 10. **Ack the sender.** Node A sends `message.ack{ id, created_at }` (keyed by `clientMsgId`) down Alice's socket. `applyEnvelope`→`onMessageAck` ([§18.5](#18-the-frontend-websocket-client)) promotes her optimistic bubble to `status:"sent"` (✓) with the real id/time. Her own message is now confirmed.
 11. **Fan out to the cluster.** Node A `bp.Publish("room:42", message.new{...})` to Redis ([§15.3](#15-scaling-out--the-redis-pubsub-backplane--nginx)). *Only now*, post-commit — never before ([§12.4](#12-the-message-send-flow-end-to-end)).
 
@@ -3946,11 +4048,11 @@ Everything in this guide converges on one moment. Here we walk a single message 
 - **Exactly-once storage** — the `client_msg_id` unique index + read-back (step 9); a dropped ack and resend can't duplicate.
 - **Exactly-once display** — recipient dedupe by id/clientMsgId (step 17); the echo of Alice's own `message.new` plus any reconnect refetch can't double a bubble.
 - **Cross-node delivery** — the Redis backplane (steps 11–13); Alice on node A reached Bob on node B with node A knowing nothing about Bob's connection.
-- **Ordering** — `(created_at, id)` from the DB (step 9), the same tuple the keyset index and cursor use ([§6.2](#6-sqlc--type-safe-hot-path-queries)); all clients converge on DB order regardless of frame arrival order.
+- **Ordering** — `(created_at, id)` from the DB (step 9), the same tuple the keyset index and cursor use ([§6.2](#6-ent-queries--messages-history-unread--receipts)); all clients converge on DB order regardless of frame arrival order.
 - **Durability & gap-fill** — the row is in Postgres before fan-out; a disconnected Bob refetches on reconnect ([§18.4](#18-the-frontend-websocket-client)) and the same dedupe makes it seamless.
 - **Security** — auth on upgrade (the socket existed only because Alice's JWT verified, [§10.3](#10-realtime-with-coderwebsocket--the-hub-architecture)) and per-message membership authz (step 7).
 
-That single trace exercises goose (the schema), sqlc (the insert), the pool (the tx), the Hub (fan-out), coder/websocket (the frames), the backplane (cross-node), JWT (the gate), and TanStack Query (the cache) — every tool in the stack, doing exactly its one job. That is the capstone.
+That single trace exercises goose (the schema), Ent (the idempotent insert), the pool (the tx), the Hub (fan-out), coder/websocket (the frames), the backplane (cross-node), JWT (the gate), and TanStack Query (the cache) — every tool in the stack, doing exactly its one job. That is the capstone.
 
 ---
 
@@ -3958,17 +4060,17 @@ That single trace exercises goose (the schema), sqlc (the insert), the pool (the
 
 A consolidated, scannable reference of the traps this guide sets you up to avoid, grouped by area. Each links to the section with the fix.
 
-### 26.1 Data layer (goose / sqlc / Ent / pgx) **[A]**
+### 26.1 Data layer (goose / Ent / pgx) **[A]**
 
 | Gotcha | Fix | § |
 |---|---|---|
-| Two pools (one for Ent, one for sqlc) exhaust Postgres connections | `stdlib.OpenDBFromPool(pool)` wraps the *one* pgxpool | [§2.3](#2-the-data-layer-division-of-labor--one-pool-two-query-layers) |
-| Ent auto-migrate fights goose over the schema | Turn Ent migration **off**; goose is the sole schema owner | [§2.1](#2-the-data-layer-division-of-labor--one-pool-two-query-layers) |
+| A second pool (Ent via `sql.Open` instead of `OpenDBFromPool`) exhausts Postgres connections | `stdlib.OpenDBFromPool(pool)` wraps the *one* pgxpool | [§2.3](#2-the-data-layer--one-pool-ent-over-goose) |
+| Ent auto-migrate fights goose over the schema | Turn Ent migration **off**; goose is the sole schema owner | [§2.1](#2-the-data-layer--one-pool-ent-over-goose) |
 | Advisory lock on a pooled conn gives no mutual exclusion | Acquire a dedicated conn, lock it, hold until unlock | [§4.6](#4-the-database-schema-via-goose-migrations) |
-| `OFFSET` pagination slows with depth and skips rows | Keyset pagination on `(created_at, id)` | [§6.2](#6-sqlc--type-safe-hot-path-queries) |
-| Editing generated sqlc/Ent code | Never; change the source (`.sql`/schema) and regenerate | [§6.4](#6-sqlc--type-safe-hot-path-queries) |
-| Schema change without regen → silent stale types | Wire `sqlc generate` + `go generate ./ent` into Air/CI | [§23.5](#23-deployment--docker-compose--migrations-on-deploy) |
-| `numeric` read as float loses precision | Override to `pgtype.Numeric`; never float for money-like data | [§6.1](#6-sqlc--type-safe-hot-path-queries) |
+| `OFFSET` pagination slows with depth and skips rows | Keyset pagination on `(created_at, id)` | [§6.2](#6-ent-queries--messages-history-unread--receipts) |
+| Editing generated Ent code | Never; change the Ent schema and regenerate | [§6.5](#6-ent-queries--messages-history-unread--receipts) |
+| Schema change without regen → stale client / compile error | Wire `go generate ./ent/...` into Air/CI | [§23.5](#23-deployment--docker-compose--migrations-on-deploy) |
+| `numeric` read as float loses precision | Override to `pgtype.Numeric`; never float for money-like data | [§6.1](#6-ent-queries--messages-history-unread--receipts) |
 
 ### 26.2 Realtime (coder/websocket & the Hub) **[A]**
 
@@ -4017,7 +4119,7 @@ A consolidated, scannable reference of the traps this guide sets you up to avoid
 
 ### 26.5 Best practices, distilled **[A]**
 
-- **One pool, right tool per job** — goose owns schema, Ent walks the graph, sqlc runs the hot path, pgx owns the sockets ([§2.4](#2-the-data-layer-division-of-labor--one-pool-two-query-layers)).
+- **One pool, one query layer** — goose owns the schema, Ent does every read and write (graph *and* hot path), pgx owns the sockets ([§2.4](#2-the-data-layer--one-pool-ent-over-goose)).
 - **The cache is the single source of truth for the UI** — every REST result and WS event resolves to a `setQueryData` ([§18.5](#18-the-frontend-websocket-client)).
 - **The WebSocket is a freshness optimization; Postgres is truth** — always able to reconstruct via refetch ([§12.4](#12-the-message-send-flow-end-to-end)).
 - **Persist → commit → broadcast**, never reorder ([§12.4](#12-the-message-send-flow-end-to-end)).
@@ -4033,7 +4135,7 @@ A consolidated, scannable reference of the traps this guide sets you up to avoid
 
 This capstone assumes you've met each tool alone. The efficient path:
 
-1. **The data layer first**, because the whole architecture rests on it: [Goose migrations](GO_GOOSE_MIGRATIONS_GUIDE.md) → [sqlc + goose](GO_SQLC_GOOSE_GUIDE.md) → [Go ent ORM](GO_ENT_ORM_GUIDE.md), then re-read [§2](#2-the-data-layer-division-of-labor--one-pool-two-query-layers) until the "one pool, two query layers" split is reflex.
+1. **The data layer first**, because the whole architecture rests on it: [Goose migrations](GO_GOOSE_MIGRATIONS_GUIDE.md) → [Go ent ORM](GO_ENT_ORM_GUIDE.md), then re-read [§2](#2-the-data-layer--one-pool-ent-over-goose) until "goose owns the schema, Ent owns every query, over one pool" is reflex. (If you later want to see the same app with a split data layer, the [sqlc + goose guide](GO_SQLC_GOOSE_GUIDE.md) teaches that variant.)
 2. **Auth**: [Go JWT + Argon2](GO_JWT_ARGON2_GUIDE.md) before [§7](#7-authentication--argon2id-jwt-access--refresh-rotation)–[§8](#8-rbac--authorization--room-roles-and-idor-defense); this guide implements the practical subset, that one explains every threat.
 3. **HTTP**: [Go Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md) before [§9](#9-the-rest-api-with-gin).
 4. **Realtime**: [Coder WebSocket](GO_CODER_WEBSOCKETS_GUIDE.md) before [§10](#10-realtime-with-coderwebsocket--the-hub-architecture)–[§15](#15-scaling-out--the-redis-pubsub-backplane--nginx) — the Accept/Dial API, the one-reader rule, and the Hub come from there; [Redis](REDIS_GUIDE.md) for the backplane and presence.
@@ -4049,10 +4151,10 @@ Each adds a real-world layer. Do them roughly in order; every one reuses the exa
 2. **[I] Rooms, DMs & RBAC.** Add channel creation, the owner/admin/member roles with the last-owner guard, and DMs as `kind='dm'` rooms ([§4.4](#4-the-database-schema-via-goose-migrations)). Prove the server enforces authz by hitting the API and the socket directly as a non-member and confirming 404/`FORBIDDEN`.
 3. **[I/A] Presence, typing, unread & receipts.** Add the ephemeral features ([§13](#13-presence--typing-indicators)–[§14](#14-read-receipts--unread-counts)). Open three tabs and verify presence heals after you `kill -9` a node (the TTL).
 4. **[A] Scale out.** Run two API nodes behind Nginx with the Redis backplane ([§15](#15-scaling-out--the-redis-pubsub-backplane--nginx)); confirm a message crosses nodes. Load-test with many concurrent sockets and watch the eviction metric.
-5. **[A] Reactions.** Add an `emoji reaction` to a message: a new `reactions` table (goose), a sqlc upsert/count, a `reaction.add`/`reaction.remove` event pair, and a cache patch. Reuse every pattern — it should feel mechanical, which is the point.
+5. **[A] Reactions.** Add an `emoji reaction` to a message: a new `reactions` table (goose), an Ent schema + upsert/count, a `reaction.add`/`reaction.remove` event pair, and a cache patch. Reuse every pattern — it should feel mechanical, which is the point.
 6. **[A] File attachments.** Add uploads: a presigned-URL flow (the browser uploads to object storage directly), an `attachment` reference on the message, and size/type validation. Cross-reference the [Gin file-upload guide](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md).
 7. **[A] Message edits & deletes.** Add `edited_at`/soft-delete columns (expand/contract migration), `message.edit`/`message.delete` events, moderator-vs-owner authz ([§8.1](#8-rbac--authorization--room-roles-and-idor-defense)), and idempotent cache patches. Handle the `last_read`/receipt pointer when a referenced message is deleted ([§14.4](#14-read-receipts--unread-counts)).
-8. **[A] Full-text search.** Add a Postgres `tsvector` index and a sqlc search query with keyset pagination over rank; a REST `/search` endpoint scoped to the caller's rooms (the same membership guard).
+8. **[A] Full-text search.** Add a Postgres `tsvector` index and an Ent `.Modify` raw query ranking over it with keyset pagination; a REST `/search` endpoint scoped to the caller's rooms (the same membership guard).
 9. **[A] Moderation.** Add rate-limit tiers, per-room mutes/bans (a membership status), an audit log of moderator actions ([§21.9](#21-banking-grade-security-hardening)), and slow-mode.
 10. **[A] End-to-end encryption.** The deep end: client-side key exchange so the server stores only ciphertext bodies. This changes what search/preview/receipts can do (the server can no longer read bodies) — a genuine architecture exercise in the trade-off between features and privacy.
 
@@ -4062,8 +4164,8 @@ Each adds a real-world layer. Do them roughly in order; every one reuses the exa
 - **The sibling capstone**: the [Go (Gin+Ent) + Next.js Full-Stack](GO_GIN_NEXTJS_REALTIME_FULLSTACK_GUIDE.md) guide builds a CRUD-plus-realtime dashboard with gorilla/websocket and a single data tool — read it to feel *when* the extra machinery here (two query layers, a backplane) is and isn't worth it.
 - **Operate it like a company**: add CI/CD, blue-green deploys, and SLO-based alerting on the metrics from [§22.2](#22-observability--testing).
 
-You've built a complete, secure, horizontally-scalable, real-time chat system that composes goose, sqlc, Ent, pgx, coder/websocket, JWT/Argon2, Gin, Redis, and Nginx on the backend with Next.js, React, and TanStack Query on the frontend — and, more importantly, you understand the *seams* that hold them together: the one pool feeding two query layers, the JWT-over-subprotocol handshake, the persist-then-broadcast discipline, the backplane that lets nodes forget about each other, and the single cache that keeps REST and realtime from ever disagreeing. That understanding is what separates "I followed a tutorial" from "I can architect this." Now go build the next one from an empty folder.
+You've built a complete, secure, horizontally-scalable, real-time chat system that composes goose, Ent, pgx, coder/websocket, JWT/Argon2, Gin, Redis, and Nginx on the backend with Next.js, React, and TanStack Query on the frontend — and, more importantly, you understand the *seams* that hold them together: the one pool behind a single Ent data layer, the JWT-over-subprotocol handshake, the persist-then-broadcast discipline, the backplane that lets nodes forget about each other, and the single cache that keeps REST and realtime from ever disagreeing. That understanding is what separates "I followed a tutorial" from "I can architect this." Now go build the next one from an empty folder.
 
 ---
 
-*Part of the offline study library. This is the integration capstone for the Go + Next.js realtime stack — pair it with the single-tool guides it composes: [Coder WebSocket](GO_CODER_WEBSOCKETS_GUIDE.md), [Goose migrations](GO_GOOSE_MIGRATIONS_GUIDE.md), [sqlc + goose](GO_SQLC_GOOSE_GUIDE.md), [Go ent ORM](GO_ENT_ORM_GUIDE.md), [Go JWT + Argon2](GO_JWT_ARGON2_GUIDE.md), [Go Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md), [Go (Gin+Ent) + Next.js Full-Stack](GO_GIN_NEXTJS_REALTIME_FULLSTACK_GUIDE.md), [Next.js 16](NEXTJS_16_GUIDE.md), [React 19](REACT_19_GUIDE.md), [TanStack Query](TANSTACK_QUERY_GUIDE.md), [PostgreSQL](POSTGRESQL_GUIDE.md), [Redis](REDIS_GUIDE.md), [Nginx](NGINX_GUIDE.md), [Docker](DOCKER_GUIDE.md). Built for 2026; confirm fast-moving package APIs (flagged ⚡) against each tool's dedicated guide and official docs before production.*
+*Part of the offline study library. This is the integration capstone for the Go + Next.js realtime stack — pair it with the single-tool guides it composes: [Coder WebSocket](GO_CODER_WEBSOCKETS_GUIDE.md), [Goose migrations](GO_GOOSE_MIGRATIONS_GUIDE.md), [Go ent ORM](GO_ENT_ORM_GUIDE.md), [Go JWT + Argon2](GO_JWT_ARGON2_GUIDE.md), [Go Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md), [Go (Gin+Ent) + Next.js Full-Stack](GO_GIN_NEXTJS_REALTIME_FULLSTACK_GUIDE.md), [Next.js 16](NEXTJS_16_GUIDE.md), [React 19](REACT_19_GUIDE.md), [TanStack Query](TANSTACK_QUERY_GUIDE.md), [PostgreSQL](POSTGRESQL_GUIDE.md), [Redis](REDIS_GUIDE.md), [Nginx](NGINX_GUIDE.md), [Docker](DOCKER_GUIDE.md). Built for 2026; confirm fast-moving package APIs (flagged ⚡) against each tool's dedicated guide and official docs before production.*
