@@ -75,6 +75,44 @@ The reason SSE is "less" than WebSockets is that it *is just HTTP*. It flows thr
 
 To keep every concept concrete, this guide builds one running example incrementally: a **secure admin dashboard** for a small banking-style back office. Staff log in (Argon2id-verified password → JWT in a secure cookie), and the dashboard opens an SSE stream showing, in real time: **notifications** ("a large transfer was flagged"), an **audit feed** (who did what), and **live metrics** (active sessions, events/second). By the end that stream authenticates on connect, delivers each admin only the events they're authorized to see, persists every event so a reconnecting browser replays what it missed, is driven directly by the database via Postgres `LISTEN/NOTIFY`, fans out across instances through a Redis backplane, and sits behind Nginx with banking-grade hardening. We start with the smallest possible stream and add one capability per section.
 
+### 1.5 The project layout — where every file goes **[B]**
+
+Because this guide builds one real application piece by piece, here is the **complete directory structure** up front, so that when you meet a code block you always know *which file it belongs in*. This is a conventional Express + TypeScript layout (source under `src/`, grouped by responsibility). **Every code block from §4 onward is headed with a comment naming its file** — e.g. `// src/sse/channels.ts` — and the tree below maps each file to the section that builds it.
+
+```text
+sse-dashboard/
+├── src/
+│   ├── index.ts                 # app entry: express app, cookie-parser/helmet,
+│   │                            #   mount routes, start the listener + backplane,
+│   │                            #   app.listen, SIGTERM graceful shutdown (§12.2)
+│   ├── sse/
+│   │   ├── channels.ts          # §5  the app-wide + per-user better-sse channels
+│   │   └── stream.route.ts      # §5 + §7.4  GET /api/stream (session → replay → register)
+│   ├── auth/
+│   │   ├── login.route.ts       # §6.2  Argon2id login → HttpOnly cookie
+│   │   ├── middleware.ts        # §6.3  requireAuth (cookie → req.userId)
+│   │   ├── jwt.ts               # §6.4  verifyJwt (pinned algorithm allow-list)
+│   │   └── ticket.route.ts      # §6.5  issue/redeem single-use SSE tickets (Redis)
+│   ├── events/
+│   │   ├── store.ts             # §7  the pg Pool + parameterized event queries
+│   │   ├── service.ts           # §7.3  publishEvent (persist-then-broadcast)
+│   │   ├── listener.ts          # §8  Postgres LISTEN/NOTIFY (dedicated pg.Client)
+│   │   └── backplane.ts         # §9.2  Redis pub/sub fan-out (ioredis)
+│   └── security.ts              # §11.4  rate limits, helmet, per-user stream caps
+├── migrations/                  # node-pg-migrate
+│   ├── 1700000000000_events.ts  # §7.2  the append-only events outbox
+│   └── 1700000000001_notify.ts  # §8.1  the NOTIFY trigger
+├── public/
+│   └── index.html               # §10.1  the admin dashboard (EventSource client)
+├── nginx/
+│   └── sse.conf                 # §9.3  reverse-proxy config (proxy_buffering off, HTTP/2)
+├── .env                         # DATABASE_URL, JWT_SECRET, REDIS_URL — never committed
+├── package.json
+└── tsconfig.json
+```
+
+Two things to note about the layout. The **`src/sse` folder is transport-only** — it owns better-sse sessions, channels, and the stream route, but nothing about *your* domain; that separation lets you reuse it across projects. And **`src/events` is the domain-and-persistence layer** — the pg store, the outbox, the `LISTEN/NOTIFY` listener, and the Redis fan-out, i.e. everything about *what* an event is and *how* it durably travels, versus *how* it's framed onto a socket. Keeping those two concerns apart is the single most important structural decision in an SSE codebase.
+
 ---
 
 ## 2. The event-stream Wire Protocol and EventSource
@@ -282,6 +320,7 @@ The single most useful field for a real app is `session.state`, because it's whe
 A `Session` is one client. Real broadcasting needs a **group**: "send this notification to every connected admin," or "send this only to user 42's sessions." better-sse models that as a **Channel** — a set of registered sessions you can broadcast to at once. A channel handles the fan-out and, crucially, removes sessions automatically when they disconnect, so you never leak references to dead connections (the classic memory leak of hand-rolled hubs).
 
 ```ts
+// src/sse/channels.ts
 import { createChannel, createSession } from "better-sse";
 
 // One app-wide channel every dashboard session joins. Create it ONCE at boot.
@@ -309,6 +348,7 @@ Broadcasting to *everyone* is rarely what a banking dashboard wants — a notifi
 - **One channel + filter on push.** Keep sessions in one channel but iterate and push only to sessions whose `state.userId` matches. Fewer objects; the filter *is* your authorization boundary.
 
 ```ts
+// src/sse/channels.ts (continued)
 // Pattern A: per-user channels, created lazily and cleaned up when empty.
 const userChannels = new Map<number, ReturnType<typeof createChannel>>();
 
@@ -359,6 +399,7 @@ Recall the hard limit from §2.4: **`EventSource` cannot send custom headers.** 
 First, authenticate the user normally and put the resulting JWT in a **secure, `HttpOnly`, `SameSite` cookie**. The browser then attaches it automatically to the `EventSource` request and every reconnect (with `withCredentials`), so the stream is authenticated with **zero client code** and **no token in a URL**. Passwords are verified with **Argon2id** — the current best-practice password hash.
 
 ```ts
+// src/auth/login.route.ts
 import argon2 from "argon2";
 import jwt from "jsonwebtoken";
 
@@ -407,6 +448,7 @@ The properties that make this banking-grade: `HttpOnly` means a successful XSS *
 One middleware verifies the cookie and attaches the identity; both normal endpoints and the stream use it.
 
 ```ts
+// src/auth/middleware.ts
 import type { Request, Response, NextFunction } from "express";
 
 // Augment Express's Request type with our fields (TypeScript).
@@ -435,6 +477,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 The infamous JWT vulnerability is **algorithm confusion**: an attacker sets the token's `alg` to `none`, or swaps `RS256` for `HS256` to trick the server into verifying an RSA-signed token with the public key as an HMAC secret. `jsonwebtoken` defends against this only if you **pin the accepted algorithms** — never trust the token's own `alg` header.
 
 ```ts
+// src/auth/jwt.ts
 interface Claims { sub: number; role: string; }
 
 function verifyJwt(token: string): Claims {
@@ -456,6 +499,7 @@ When a cookie isn't available (a cross-origin dashboard, a mobile/native client)
 The ticket must be short-lived and single-use because **URLs leak** — into access logs, proxy logs, browser history, `Referer` headers. A 30-second single-use ticket that's already consumed by the time anyone reads the log is nearly worthless to an attacker; a long-lived JWT in a URL is a credential sitting in a dozen log files.
 
 ```ts
+// src/auth/ticket.route.ts
 import { randomBytes } from "crypto";
 
 // Issue: called via a NORMAL bearer-authenticated request.
@@ -512,6 +556,7 @@ CREATE INDEX events_user_id_id_idx ON events (user_id, id);
 The rule is **persist first, broadcast second.** If you broadcast before the insert commits and the insert then fails, connected clients saw an event that doesn't exist in history — so a *different* client that reconnects and replays from the DB won't see it, and now two clients disagree. Insert first; the DB is the source of truth; the live broadcast is an optimization.
 
 ```ts
+// src/events/service.ts
 import { Pool } from "pg";
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -542,6 +587,7 @@ Every event now has a durable home and a stable ID *before* any client hears abo
 When a browser reconnects it *automatically* sends `Last-Event-ID: <n>`, which better-sse exposes as `session.lastId`. Catch the client up from the DB **before** registering it with the live channel — doing replay first preserves order and avoids a gap between "end of replay" and "start of live."
 
 ```ts
+// src/sse/stream.route.ts
 app.get("/api/stream", requireAuth, async (req, res) => {
 	const session = await createSession(req, res);
 	const userId = req.userId!;
@@ -601,6 +647,7 @@ CREATE TRIGGER events_notify
 ```
 
 ```ts
+// src/events/listener.ts
 import { Client } from "pg";
 
 // A standalone client dedicated to LISTEN — NOT from the pool.
@@ -653,6 +700,7 @@ With the `LISTEN/NOTIFY` design (§8) this is *partly* solved already: if every 
 Each instance **publishes** every event it originates to a Redis channel and **subscribes** to that channel, broadcasting anything received to its *local* better-sse channels. An event thus reaches every instance's sessions regardless of origin. Use a **separate subscriber connection** — an ioredis connection in subscribe mode can't run other commands, so `duplicate()` a dedicated one.
 
 ```ts
+// src/events/backplane.ts
 import Redis from "ioredis";
 
 const redis = new Redis(process.env.REDIS_URL!);      // publisher / normal commands
@@ -721,6 +769,7 @@ The two lines that matter most in Nginx are `proxy_buffering off` and the long `
 The front end is deliberately the smallest part — that's SSE's promise. Here is a full admin dashboard as one self-contained HTML file: it opens the stream with `withCredentials` (sending the auth cookie), routes named events to panels, escapes all server text, and handles reconnection. No framework, so you can read every line; §10.3 notes the React equivalent.
 
 ```html
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -823,6 +872,7 @@ Long-lived connections are a DoS vector: each holds a socket and memory. An atta
 - **Idle/absolute timeouts** — even authenticated streams get a maximum lifetime, forcing periodic reconnect (and re-auth).
 
 ```ts
+// src/security.ts
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 
@@ -862,6 +912,7 @@ Every open SSE session owns a socket, an entry in a channel, and any timers/list
 better-sse deregisters sessions from channels automatically on disconnect, which removes the most common leak. For deploys, track your sessions and close them on `SIGTERM`, then stop accepting new connections:
 
 ```ts
+// src/index.ts
 const server = app.listen(8080);
 const liveSessions = new Set<{ close: () => void }>(); // register sessions here on connect
 

@@ -1511,6 +1511,7 @@ To close the loop from §1.3: **Ent** connects by opening a `*sql.DB` (often via
 Here's the single most useful pattern for structuring pgx code. Both `*pgxpool.Pool` and `pgx.Tx` implement the **same small set of methods** (`Exec`, `Query`, `QueryRow`, `SendBatch`, `CopyFrom`). Define an interface capturing those, and your repository functions can accept *either* — so the exact same `InsertAccount` works standalone (given the pool) **or** inside a transaction (given the tx). This is how you compose small repository operations into larger transactional units without duplicating code.
 
 ```go
+// internal/store/store.go
 // DBTX is satisfied by BOTH *pgxpool.Pool AND pgx.Tx. Repository methods take a
 // DBTX, so a caller decides whether they run in a transaction or not.
 type DBTX interface {
@@ -1553,6 +1554,7 @@ err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 Package your pool and repository methods into a `Store` type — one object your handlers depend on, holding the pool and exposing domain operations. This is the seam where HTTP meets data.
 
 ```go
+// internal/store/store.go (continued)
 type Store struct {
 	pool *pgxpool.Pool
 }
@@ -1611,7 +1613,7 @@ This section covers the "everything around the queries" — loading configuratio
 Read the environment once, at startup, into a typed struct — so the rest of the app depends on validated config, not scattered `os.Getenv` calls. godotenv populates the environment in dev; the struct is the same in every environment.
 
 ```go
-// internal/platform/config/config.go
+// internal/config/config.go
 package config
 
 import (

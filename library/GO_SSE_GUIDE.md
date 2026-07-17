@@ -82,6 +82,51 @@ To make every concept concrete, this guide builds one running example incrementa
 
 By the end, that stream will authenticate on connect, deliver each admin only the events they're authorized to see, persist every event so a reconnecting browser can replay what it missed, be driven directly by the database via Postgres `LISTEN/NOTIFY`, fan out across multiple server instances through a Redis backplane, and sit behind Nginx with all the banking-grade hardening spelled out. We start with the smallest possible stream and add one capability per section.
 
+### 1.5 The project layout — where every file goes **[B]**
+
+Because this guide builds one real application piece by piece, here is the **complete directory structure** up front, so that when you meet a code block you always know *which file it belongs in*. This is a standard idiomatic Go layout (a `cmd/` entry point, an `internal/` package tree grouped by responsibility). **Every code block from §4 onward is headed with a comment naming its file** — e.g. `// internal/sse/hub.go` — and the tree below maps each file to the section that builds it.
+
+```text
+sse-dashboard/
+├── cmd/
+│   └── server/
+│       └── main.go              # app entry point: load config, open the pgxpool,
+│                                #   start the hub + LISTEN/NOTIFY listener + Redis
+│                                #   backplane, register routes, graceful shutdown (§5.5, §11.6)
+├── internal/
+│   ├── sse/                     # the SSE transport layer (framework-agnostic core)
+│   │   ├── headers.go           # §4.2  setSSEHeaders — the streaming response headers
+│   │   ├── hub.go               # §5.2  the broker/hub (single-owner goroutine, backpressure)
+│   │   └── handler.go           # §5.3 + §7.5  the Gin stream handler (register → replay → live)
+│   ├── auth/
+│   │   ├── cookie.go            # §6.2  Argon2id login → HttpOnly cookie; AuthFromCookie
+│   │   ├── ticket.go            # §6.3  issue/redeem single-use SSE tickets (Redis)
+│   │   └── jwt.go               # §6.4  rigorous golang-jwt v5 verification
+│   ├── events/
+│   │   ├── service.go           # §7.4 + §7.5  Publish (persist-then-broadcast), Since (replay)
+│   │   ├── listener.go          # §8.4  Postgres LISTEN/NOTIFY → hub.Broadcast
+│   │   └── backplane.go         # §9.2  Redis pub/sub cross-instance fan-out
+│   └── platform/
+│       └── security.go          # §11.4  connection caps / per-user stream limits
+├── ent/                         # Ent-generated code (schema in ent/schema/*.go)
+│   └── schema/
+│       └── event.go             # the Event entity (mirrors the events table)
+├── migrations/                  # goose SQL migrations
+│   ├── 0001_users.sql
+│   ├── 0002_events.sql          # §7.3  the append-only events outbox
+│   └── 0003_events_notify.sql   # §8.3  the NOTIFY trigger
+├── web/
+│   └── index.html               # §10.1  the admin dashboard (EventSource client)
+├── nginx/
+│   └── sse.conf                 # §9.3  reverse-proxy config (proxy_buffering off, HTTP/2)
+├── .air.toml                    # §13.2  hot-reload config for development
+├── .env                         # DATABASE_URL, JWT_SECRET, REDIS_URL — never committed
+├── go.mod
+└── go.sum
+```
+
+Two things to note about the layout. The **`internal/sse` package is deliberately transport-only** — it knows about hubs, headers, and framing, but nothing about *your* domain (accounts, transfers); that separation is what lets you reuse it across projects. And **`internal/events` is the domain-and-persistence layer** — it owns the outbox table, the `LISTEN/NOTIFY` listener, and the Redis fan-out, i.e. everything about *what* an event is and *how* it durably travels, as opposed to *how* it's framed onto a socket. Keeping those two concerns in separate packages is the single most important structural decision in an SSE codebase; if you remember one thing from this section, let it be that boundary.
+
 ---
 
 ## 2. The event-stream Wire Protocol
@@ -226,6 +271,7 @@ An SSE handler differs from a normal Gin handler in exactly three ways, and ever
 ### 4.2 The headers, and why each one **[B]**
 
 ```go
+// internal/sse/headers.go
 func setSSEHeaders(c *gin.Context) {
 	h := c.Writer.Header()
 	// The MIME type that makes the browser treat this as an event stream and
@@ -351,6 +397,7 @@ The reason this is a *pattern* and not just "a slice of channels" is **concurren
 ### 5.2 The hub, fully commented **[I]**
 
 ```go
+// internal/sse/hub.go
 package sse
 
 import (
@@ -439,6 +486,7 @@ The shape to internalize: **one goroutine owns the state; everyone else sends it
 Now the SSE handler's job is small: register with the hub, then forward its channel to the wire until the client leaves.
 
 ```go
+// internal/sse/handler.go
 func (h *Hub) StreamHandler(c *gin.Context) {
 	setSSEHeaders(c)
 
@@ -510,6 +558,7 @@ Recall from §3.3 the hard limit that shapes this entire section: **`EventSource
 The browser attaches cookies to requests automatically, *including* the `EventSource` request and all its reconnects, as long as you pass `{ withCredentials: true }`. So if your login sets a secure, `HttpOnly` cookie containing (or referencing) the session/JWT, the SSE endpoint gets authenticated on every connect and reconnect with **zero client code** and **no token in the URL**. This is the cleanest and most secure option when the dashboard and the API are the same site (which, behind Nginx as one origin, they are — §9).
 
 ```go
+// internal/auth/cookie.go
 // On successful Argon2id login, set the JWT in an HttpOnly, Secure, SameSite cookie.
 func setSessionCookie(c *gin.Context, jwt string) {
 	c.SetSameSite(http.SameSiteStrictMode) // stream is same-site; Strict is safe & strong
@@ -597,6 +646,7 @@ Using Redis `GETDEL` makes redemption **atomic** — the read and the delete hap
 However the token arrives — cookie or ticket-then-lookup — you must verify it *correctly*. The infamous JWT vulnerability is **algorithm confusion**: an attacker changes the token's `alg` header to `none`, or swaps `RS256` for `HS256` to trick a server into verifying an RSA-signed token with the RSA public key as an HMAC secret. golang-jwt v5 defends against this only if you **pin the expected algorithm** and reject everything else:
 
 ```go
+// internal/auth/jwt.go
 func verifyJWT(tokenStr string, secret []byte) (*Claims, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims,
@@ -664,6 +714,7 @@ This is "one pgxpool, one query layer" — goose shapes the database, Ent querie
 The event store is an **append-only outbox**: every event worth delivering is inserted here first, then broadcast. The `id BIGSERIAL` gives us the monotonic, gap-detecting sequence `Last-Event-ID` needs.
 
 ```sql
+-- migrations/0002_events.sql
 -- +goose Up
 -- Append-only event outbox. id is the monotonic sequence used for SSE resume.
 CREATE TABLE events (
@@ -692,6 +743,7 @@ Because `id` is a `BIGSERIAL`, Postgres hands out strictly increasing values. Th
 The rule is **persist first, broadcast second.** If you broadcast before the insert commits and the insert then fails, connected clients saw an event that doesn't exist in history — so a *different* client that reconnects and replays from the DB won't see it, and now two clients disagree about what happened. Insert first; the DB is the source of truth; the live broadcast is an optimization on top of it.
 
 ```go
+// internal/events/service.go
 // Publish is the single choke point for emitting an event. Call it from anywhere
 // (a transfer service, an admin action handler). It persists, then broadcasts.
 func (s *EventService) Publish(ctx context.Context, userID int64, name string, data any) error {
@@ -728,6 +780,7 @@ Now every event has a durable home and a stable ID *before* any client hears abo
 When a browser reconnects, the browser *automatically* sends `Last-Event-ID: <n>`. The handler reads it, queries the DB for everything newer that this user is allowed to see, streams those first (catching the client up), *then* joins the live hub. Doing catch-up **before** registering with the hub is important — it preserves order and avoids a gap between "end of replay" and "start of live."
 
 ```go
+// internal/sse/handler.go
 func (h *Hub) StreamHandler(c *gin.Context) {
 	setSSEHeaders(c)
 	userID := c.GetInt64("userID")
@@ -796,6 +849,7 @@ PostgreSQL has a built-in answer: **`LISTEN` / `NOTIFY`**, an in-database publis
 We make the `events` table notify automatically on insert. Now `EventService.Publish` (§7) doesn't even need to call the hub directly — inserting the row *is* the signal. (You can keep the direct broadcast for the local instance and rely on NOTIFY for the others; §9 shows how these compose. For clarity here, NOTIFY drives everything.)
 
 ```sql
+-- migrations/0003_events_notify.sql
 -- +goose Up
 -- +goose StatementBegin
 -- On each new event row, NOTIFY the 'events' channel with the new id as payload.
@@ -823,6 +877,7 @@ The **NOTIFY-an-id-then-read** pattern is the important best practice here. `NOT
 ### 8.4 The listener goroutine **[A]**
 
 ```go
+// internal/events/listener.go
 // RunListener holds ONE dedicated connection, LISTENs, and turns every NOTIFY
 // into a hub broadcast. Start once at boot: go listener.Run(ctx).
 func (l *Listener) Run(ctx context.Context) error {
@@ -887,6 +942,7 @@ With the `LISTEN/NOTIFY` design from §8 this is *partially* solved already: if 
 Each instance does two things: it **publishes** every event it originates to a Redis channel, and it **subscribes** to that channel and broadcasts anything it receives to its *local* hub. An event thus reaches every instance's clients regardless of which instance created it. The key subtlety is avoiding a double-delivery loop: tag each message with the originating instance id and skip re-broadcasting your own (or simply always deliver from Redis and never locally — pick one path and stick to it).
 
 ```go
+// internal/events/backplane.go
 // Publish to the backplane instead of (or in addition to) the local hub.
 func (b *Backplane) Publish(ctx context.Context, ev Event) error {
 	msg, _ := json.Marshal(backplaneMsg{Origin: b.instanceID, Event: ev})
@@ -968,6 +1024,7 @@ The two lines that matter most are `proxy_buffering off` (pairs with the `X-Acce
 The front end is deliberately the smallest part — that's SSE's promise. Here is a full admin dashboard as one self-contained HTML file: it logs in (which sets the auth cookie), opens the stream with `withCredentials`, routes named events to the right panels, and handles reconnection gracefully. It uses no framework so you can read every line; §10.3 notes the React equivalent.
 
 ```html
+<!-- web/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1089,6 +1146,7 @@ Long-lived connections are a DoS vector: each one holds a goroutine, a buffer, a
 - **Idle/absolute timeouts.** Even authenticated streams get a maximum lifetime, forcing periodic reconnect (and thus re-auth). A stream open for 24 hours is a stale credential held open.
 
 ```go
+// internal/platform/security.go
 // Reject a new stream if this user already has too many open.
 func (h *Hub) tryReserveSlot(userID int64) bool {
 	h.mu.Lock()

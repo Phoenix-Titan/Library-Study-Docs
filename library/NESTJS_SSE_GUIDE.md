@@ -62,6 +62,43 @@ The reason SSE is "less" is that it *is just HTTP* — it flows through every pr
 
 To keep concepts concrete, this guide builds one running example incrementally: a **secure admin dashboard** for a small banking-style back office. Staff log in (Argon2id-verified password → JWT in a secure cookie), and the dashboard opens an SSE stream showing, in real time: **notifications** ("a large transfer was flagged"), an **audit feed** (who did what), and **live metrics** (active sessions, events/second). By the end it authenticates on connect via a Guard, delivers each admin only the events they're authorized to see (RxJS filtering), persists every event for reconnect replay, is driven by the database via `LISTEN/NOTIFY`, fans out across instances through Redis, and sits behind Nginx with banking-grade hardening.
 
+### 1.4 The project layout — where every file goes **[B]**
+
+Because this guide builds one real application piece by piece, here is the **complete directory structure** up front, so that when you meet a code block you always know *which file it belongs in*. This is a conventional NestJS layout (feature folders under `src/`, each a Nest module's worth of providers/controllers). **Every code block from §3 onward is headed with a comment naming its file** — e.g. `// src/sse/event-bus.ts` — and the tree below maps each file to the section that builds it.
+
+```text
+sse-dashboard/
+├── src/
+│   ├── main.ts                  # bootstrap: cookie-parser, enableShutdownHooks, listen (§12.1)
+│   ├── app.module.ts            # root module wiring every provider + controller below
+│   ├── sse/
+│   │   ├── event-bus.ts         # §4.1  EventBus provider — the hot Subject (the "hub")
+│   │   ├── event-bridge.ts      # §4.3  @OnEvent domain-event listener → persist + emit
+│   │   └── stream.controller.ts # §4.2 + §5 + §7.4  the @Sse() endpoint (filter, concat replay+live)
+│   ├── auth/
+│   │   ├── auth.controller.ts   # §6.2  Argon2id login → HttpOnly cookie
+│   │   ├── sse-auth.guard.ts    # §6.3  reads the cookie/ticket → req.user
+│   │   ├── jwt.config.ts        # §6.4  JwtModule registration (pinned algorithms)
+│   │   └── slots.service.ts     # §11.4  per-user open-stream caps
+│   └── events/
+│       ├── event.entity.ts      # §7.2  the TypeORM Event entity
+│       ├── event.store.ts       # §7.2  append() + since() (replay) queries
+│       ├── pg-listener.ts       # §8.2  Postgres LISTEN/NOTIFY provider (OnModuleInit)
+│       └── redis-backplane.ts   # §9.2  Redis pub/sub provider (provider lifecycle)
+├── migrations/                  # TypeORM migrations
+│   ├── 1700000000000-Events.ts  # §7.2  the append-only events table
+│   └── 1700000000001-Notify.ts  # §8.2  the NOTIFY trigger
+├── public/
+│   └── index.html               # §10.1  the admin dashboard (EventSource client)
+├── nginx/
+│   └── sse.conf                 # §9.3  reverse-proxy config (proxy_buffering off, HTTP/2)
+├── .env                         # DATABASE_URL, JWT_SECRET, REDIS_URL — never committed
+├── package.json
+└── tsconfig.json
+```
+
+Two things to note. The **`src/sse` folder is the transport-and-reactive layer** — the `EventBus` Subject, the `@Sse()` controller, and the bridge — while **`src/events` is the domain-and-persistence layer** (the entity, the store, the `LISTEN/NOTIFY` listener, the Redis fan-out). Keeping *what an event is and how it durably travels* (`events`) separate from *how it's streamed to a client* (`sse`) is the single most important structural decision in an SSE codebase. And notice how naturally Nest's building blocks map onto files: a **provider** per concern (`EventBus`, `PgListener`, `RedisBackplane`), a **controller** for the endpoint, a **guard** for auth — the framework's vocabulary *is* the folder structure.
+
 ---
 
 ## 2. The event-stream Protocol and EventSource
@@ -173,6 +210,7 @@ Point `new EventSource("http://localhost:3000/api/clock")` with `addEventListene
 Create an injectable provider that owns a **Subject** — the single stream every event flows through and every `@Sse()` endpoint subscribes to. This is the Nest-idiomatic "hub."
 
 ```ts
+// src/sse/event-bus.ts
 import { Injectable } from "@nestjs/common";
 import { Subject, Observable } from "rxjs";
 
@@ -207,6 +245,7 @@ export class EventBus {
 The `@Sse()` endpoint subscribes to the bus, maps each `AppEvent` to a `MessageEvent`, and returns it. Nest subscribes on connect and unsubscribes on disconnect — so a client that leaves is automatically removed from the Subject's subscriber list, with **no manual cleanup** (RxJS + Nest handle the teardown that the Go guide does with `defer` and the Express guide with `disconnected`).
 
 ```ts
+// src/sse/stream.controller.ts
 import { Controller, Sse, UseGuards } from "@nestjs/common";
 import { map, Observable } from "rxjs";
 
@@ -229,6 +268,7 @@ export class StreamController {
 Directly injecting `EventBus` everywhere couples your services to SSE. A cleaner Nest pattern is to let services emit **domain events** through Nest's `@nestjs/event-emitter` (EventEmitter2) — which they'd often do anyway for decoupling — and have a single listener translate those into `EventBus.emit`. Your transfer service knows nothing about SSE; it just announces "transfer.flagged," and the SSE layer decides that means a stream event.
 
 ```ts
+// src/sse/event-bridge.ts
 import { Injectable } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 
@@ -264,6 +304,7 @@ Now the flow is decoupled and testable: services emit domain events; the bridge 
 The Subject carries *every* event for *every* user. A banking dashboard must never show Alice's notification to Bob, so each connection filters the shared stream down to what that user is allowed to see. This is where RxJS shines: the per-connection Observable is just the bus filtered by the authenticated user id. Because filtering happens *per subscription*, each client gets its own view of the one hot stream.
 
 ```ts
+// src/sse/stream.controller.ts (with the per-user authorization filter)
 import { Controller, Sse, Req, UseGuards } from "@nestjs/common";
 import { filter, map, Observable } from "rxjs";
 import type { Request } from "express";
@@ -316,6 +357,7 @@ Recall the hard limit (§2.3): **`EventSource` cannot send headers**, so no `Aut
 ### 6.2 Argon2id login issuing a secure cookie **[I/A]**
 
 ```ts
+// src/auth/auth.controller.ts
 import { Body, Controller, Post, Res } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { Response } from "express";
@@ -358,6 +400,7 @@ export async function hashPassword(plain: string): Promise<string> {
 The Guard reads the cookie, verifies the JWT, and attaches `req.user`. The same Guard protects normal endpoints and the stream.
 
 ```ts
+// src/auth/sse-auth.guard.ts
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { Request } from "express";
@@ -390,6 +433,7 @@ export class SseAuthGuard implements CanActivate {
 The infamous JWT vulnerability is **algorithm confusion** (`alg: none`, or `RS256`→`HS256` swaps). Pin the algorithm in `JwtModule` so the verifier never trusts the token's own `alg` header:
 
 ```ts
+// src/auth/jwt.config.ts
 import { JwtModule } from "@nestjs/jwt";
 
 JwtModule.register({
@@ -430,6 +474,7 @@ The fix is why `id` and `Last-Event-ID` exist: **persist every event with a mono
 The event store is an **append-only outbox**; a `bigint` generated id gives the monotonic sequence resume needs.
 
 ```ts
+// src/events/event.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from "typeorm";
 
 @Entity("events")
@@ -450,6 +495,7 @@ export class EventEntity {
 ```
 
 ```ts
+// src/events/event.store.ts
 @Injectable()
 export class EventStore {
 	constructor(@InjectRepository(EventEntity) private readonly repo: Repository<EventEntity>) {}
@@ -538,6 +584,7 @@ CREATE TRIGGER events_notify AFTER INSERT ON events
 ```
 
 ```ts
+// src/events/pg-listener.ts
 import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import { Client } from "pg";
 
@@ -591,6 +638,7 @@ With the `LISTEN/NOTIFY` design (§8) this is *partly* solved — if every insta
 Each instance **publishes** originated events to a Redis channel and **subscribes** to that channel, pushing anything received into its *local* `EventBus`. Use a dedicated subscriber connection (ioredis in subscribe mode can't run other commands).
 
 ```ts
+// src/events/redis-backplane.ts
 import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import Redis from "ioredis";
 
@@ -655,6 +703,7 @@ Serve over **HTTP/2** to dissolve the 6-connection limit (§2.3); set `proxy_buf
 The front end is deliberately the smallest part. Here is a full admin dashboard as one self-contained HTML file: it opens the stream with `withCredentials` (sending the auth cookie), routes named events (Nest's `MessageEvent.type`) to panels, escapes all server text, and handles reconnection. No framework, so you can read every line.
 
 ```html
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -785,7 +834,7 @@ stream(@Req() req: Request): Observable<MessageEvent> {
 Nest's lifecycle hooks make SSE cleanup unusually clean. **`@Sse()` + RxJS**: Nest unsubscribes from your Observable when a client disconnects, so subscriptions don't leak — the `finalize` operator (§11.4) is your hook for any per-connection cleanup (release a slot, clear a counter). **Providers** (`PgListener`, `RedisBackplane`): implement `OnModuleDestroy` to close the dedicated `pg` client and Redis connections. **The app**: enable shutdown hooks so `SIGTERM` triggers an orderly teardown.
 
 ```ts
-// main.ts
+// src/main.ts
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule);
 	app.use(cookieParser());          // needed to read the auth cookie (§6.3)
