@@ -596,6 +596,7 @@ The **Hub** is the switchboard operator: it keeps the registry of clients (and w
 The Hub owns its state and is driven by a single `run()` goroutine reading from `register`, `unregister`, and `broadcast` channels. Because only that one goroutine touches the `clients` map, **no mutex is needed** — the channel *is* the synchronization. This is the idiomatic-Go "share memory by communicating" style; it is easy to reason about and impossible to race, at the cost of all hub operations funnelling through one goroutine (rarely a bottleneck until very high fan-out).
 
 ```go
+// internal/hub/hub.go  (Client lives in internal/hub/client.go; shown together here)
 package hub
 
 import (
@@ -930,6 +931,7 @@ Most real Go backends route with [Gin](GO_GIN_REST_API_FILE_UPLOAD_GUIDE.md), no
 ### 7.1 Mounting the handler **[I]**
 
 ```go
+// cmd/server/main.go
 func main() {
 	r := gin.New()
 	r.Use(gin.Recovery(), RequestLogger()) // your normal HTTP middleware
@@ -1056,6 +1058,7 @@ new WebSocket("wss://api.example.com/ws", ["json.v1", `auth.jwt.${token}`]);
 ```
 
 ```go
+// internal/auth/upgrade.go
 // Server: pull the token out of the requested subprotocols BEFORE Accept.
 func authenticateUpgrade(c *gin.Context) (string, bool) {
 	var token string
@@ -1269,6 +1272,7 @@ For a demo you can skip migration files with `client.Schema.Create(ctx)` (Ent's 
 The canonical write flow for a durable real-time app: when a message arrives and is authorized, **persist it first**, then broadcast the *stored* record (with its DB-assigned id and timestamp). Persisting first means a client that reloads and fetches history sees exactly what live subscribers saw — no ghost messages that were broadcast but never saved, and no ordering skew.
 
 ```go
+// internal/store/messages.go
 func (h *Hub) persistAndBroadcast(userID, room, body string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -1464,6 +1468,7 @@ The Hub from §6 lives in **one process's memory**. It works beautifully — unt
 So `sendToRoom` changes from "fan out locally" to "publish to Redis," and a background subscriber does the local fan-out on every node. Persistence still happens once (persist-then-publish).
 
 ```go
+// internal/hub/backplane.go
 import "github.com/redis/go-redis/v9"
 
 type Backplane struct {
@@ -1499,6 +1504,7 @@ func (b *Backplane) Subscribe(ctx context.Context, rooms ...string) {
 The persist-then-broadcast flow becomes **persist → publish**; local delivery is now a side effect of the subscription, uniform across nodes:
 
 ```go
+// internal/store/messages.go
 func (h *Hub) persistAndBroadcast(userID, room, body string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
