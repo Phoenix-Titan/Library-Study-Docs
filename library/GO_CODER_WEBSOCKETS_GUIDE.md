@@ -1588,16 +1588,39 @@ This ties everything together into a coherent, production-shaped service: **live
 
 ### 12.1 Project layout **[A]**
 
-```
+Here is the full directory structure, mapping every file to the section that builds it — so you always know *which file* a given code block belongs in. The components you met in §6–§11 assemble here; **each block in this section is headed with a comment naming its file**, and the earlier component blocks (§6 Hub, §8 auth, §9 persistence) note their destination file too.
+
+```text
 realtime/
-  cmd/server/main.go        # wiring: config, pool, ent, hub, gin, shutdown
-  internal/
-    auth/                   # argon2 verify, jwt issue/verify, upgrade auth
-    hub/                    # Hub, Client, pumps, rooms, backplane
-    handlers/               # login, ws-ticket, history REST
-  ent/                      # generated ORM (schema in ent/schema)
-  .air.toml
-  go.mod
+├── cmd/
+│   └── server/
+│       └── main.go              # §12.2  wiring: config → pool → ent → hub → gin → shutdown
+├── internal/
+│   ├── hub/
+│   │   ├── hub.go               # §6   the Hub (register/unregister/broadcast, rooms)
+│   │   ├── client.go            # §6   the Client (read/write pumps, bounded send, backpressure)
+│   │   └── backplane.go         # §11  Redis pub/sub cross-instance fan-out
+│   ├── auth/
+│   │   ├── password.go          # §8   Argon2id verify
+│   │   ├── jwt.go               # §8   JWT issue/verify (rigorous validation)
+│   │   └── upgrade.go           # §8   authenticate the WS upgrade (subprotocol/ticket)
+│   ├── handlers/
+│   │   ├── login.go             # §8   POST /login → JWT
+│   │   ├── ticket.go            # §8   POST /ws-ticket → single-use ticket
+│   │   └── history.go           # §9   REST history (Ent reads)
+│   └── store/
+│       └── messages.go          # §9   persist-then-broadcast (Ent + pgx)
+├── ent/                         # generated ORM (schema in ent/schema/*.go)
+│   └── schema/
+│       └── message.go           # the Message entity
+├── web/
+│   └── index.html               # the browser WS client (§4)
+├── nginx/
+│   └── ws.conf                  # §11  reverse proxy (Upgrade headers, timeouts)
+├── .air.toml                    # hot-reload for development
+├── .env                         # DATABASE_URL, JWT_SECRET, REDIS_URL — never committed
+├── go.mod
+└── go.sum
 ```
 
 ### 12.2 `main.go` — wiring and shutdown **[A]**

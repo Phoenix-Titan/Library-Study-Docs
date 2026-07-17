@@ -501,7 +501,49 @@ The timing-attack contrast, made explicit:
 
 Here is the full, production-ready package — drop it into `internal/password/` and reuse it across projects. It adds `NeedsRehash`, which lets you transparently upgrade weak old hashes to your current parameters the next time a user logs in successfully. This is the *correct* way to raise your security level over time without forcing password resets.
 
+### Where every piece goes — the auth-service project layout **[I]**
+
+This guide is a *cookbook*: each section is a self-contained recipe (password hashing, JWTs, refresh rotation, RBAC, OTP, MFA, OAuth, passkeys, encryption, rate-limiting). In a real service they assemble into one package tree. Here is that layout, so you always know *which file* a given block belongs in — and **from here on, each self-contained code block is headed with a comment naming its file** (e.g. `// internal/password/password.go`), while §14 shows a runnable single-file version that inlines several of these for demonstration.
+
+```text
+auth-service/
+├── cmd/
+│   └── server/
+│       └── main.go              # wiring (config → store → router → serve);
+│                                #   §14 shows a self-contained single-file version
+├── internal/
+│   ├── password/
+│   │   └── password.go          # §7   Argon2id hashing (Hash / Verify / NeedsRehash)
+│   ├── token/
+│   │   ├── jwt.go               # §10 sign · §11 parse+validate (alg-confusion guard)
+│   │   └── refresh.go           # §12  access+refresh rotation & revocation
+│   ├── auth/
+│   │   ├── middleware.go        # §13  bearer-token middleware (net/http + Gin)
+│   │   ├── handlers.go          # §14  register / login / protected handlers
+│   │   └── rbac.go              # §15  roles, permissions, enforcement
+│   ├── mfa/
+│   │   ├── otp.go               # §18  email / WhatsApp one-time passwords
+│   │   ├── totp.go              # §19  TOTP enrollment/verify + recovery codes
+│   │   └── webauthn.go          # §21  passkeys / WebAuthn ceremonies
+│   ├── oauth/
+│   │   └── oidc.go              # §20  OAuth2 / OIDC social login (PKCE)
+│   ├── crypto/
+│   │   └── aesgcm.go            # §22.3  AES-256-GCM application-level encryption
+│   └── ratelimit/
+│       └── limiter.go           # §23  Redis token-bucket abuse prevention
+├── migrations/                  # the SQL schema shown alongside each module
+│   ├── 0001_users.sql
+│   ├── 0002_refresh_tokens.sql  # §12
+│   ├── 0003_otps.sql            # §18.2
+│   ├── 0004_mfa.sql             # §19.4
+│   ├── 0005_oauth_identities.sql # §20.5
+│   └── 0006_webauthn.sql        # §21.3
+├── .env                         # secrets: JWT_SECRET/keys, DB URL — never committed
+└── go.mod
+```
+
 ```go
+// internal/password/password.go
 // Package password provides Argon2id password hashing and verification using
 // the PHC string format, so the parameters live WITH each hash and can be
 // upgraded later without breaking existing stored credentials.

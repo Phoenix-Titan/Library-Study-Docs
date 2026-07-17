@@ -848,6 +848,7 @@ This sidesteps an entire class of concurrency bugs. There is no shared mutable m
 ### 9.3 hub.go **[I]**
 
 ```go
+// hub.go
 package main
 
 import "log/slog"

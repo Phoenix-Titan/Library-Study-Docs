@@ -1021,6 +1021,8 @@ mux.Handle("GET /admin/users", middleware.RequireAuth(token)(http.HandlerFunc(ad
 
 This section builds a complete, runnable **Books API** with all CRUD endpoints, a handler struct for dependency injection, an in-memory store, and — crucially — an **interface-based store** so you can swap in a database later without touching handlers. (For an *actual* SQL/ORM backend, see `GO_ENT_ORM_GUIDE.md`; the interface here is the seam those guides plug into.)
 
+> **Where each piece lives in a real project.** §8 presents the whole API as one runnable `main.go` so you can copy-run it, but the pieces map one-to-one onto the standard layout that [§18](#18-structuring-a-real-service) lays out as a directory tree. As you read, note the destination file for each part: the **model + DTOs (§8.1)** → `internal/book/book.go`; the **store interface + in-memory implementation (§8.2)** → `internal/store/store.go` and `internal/store/memory.go`; the **handler struct + methods (§8.3)** → `internal/http/handler.go`; the **route wiring (§8.4)** → `internal/http/routes.go`; and the `main()` that assembles them → `cmd/api/main.go`. So when you're ready to split the single file, you already know exactly which block goes where.
+
 ### 8.1 Domain model and DTOs **[I]**
 
 (See §6 for why DTOs are separate from the model.)
