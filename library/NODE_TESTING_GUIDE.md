@@ -460,7 +460,25 @@ Two conventions coexist; pick one per project:
 - **Co-located:** `src/cart.ts` next to `src/cart.test.ts`. Pros: easy to find, obvious when a file has no tests, moves with the code. This is the modern default, especially with Vitest.
 - **Separate folder:** all tests under `test/` or `__tests__/` mirroring `src/`. Pros: keeps `src/` pure; some teams prefer it for shipping libraries.
 
-Runners discover tests by filename glob. The near-universal patterns are `*.test.ts` and `*.spec.ts` (`.spec` is common in the Angular/NestJS world; they are interchangeable). Whatever you choose, be consistent — the glob in your config depends on it.
+Visually, the two layouts — so you know exactly *which file a test goes in*:
+
+```text
+# ── Co-located (the modern default) ──          # ── Separate folder ──
+project/                                          project/
+├── src/                                          ├── src/
+│   ├── cart.ts                                   │   ├── cart.ts
+│   ├── cart.test.ts        # unit test next to   │   └── user.ts
+│   ├── user.ts             #   the code it tests  ├── test/                 # mirrors src/
+│   └── user.test.ts                              │   ├── cart.test.ts
+├── test/                                          │   └── user.test.ts
+│   ├── setup.ts            # global test setup    ├── test/e2e/             # Playwright specs
+│   ├── helpers/            # shared test utils    │   └── login.spec.ts
+│   └── e2e/                # Playwright specs      ├── vitest.config.ts
+├── vitest.config.ts        # runner config        └── package.json
+└── package.json            # "test" script
+```
+
+Runners discover tests by filename glob. The near-universal patterns are `*.test.ts` and `*.spec.ts` (`.spec` is common in the Angular/NestJS world; they are interchangeable). Whatever you choose, be consistent — the glob in your config depends on it. **Throughout this guide, each substantial test example is headed with a comment naming its file** (e.g. `// src/cart.test.ts`), so you always know where the code belongs; shared setup lives in `test/setup.ts` and cross-test helpers in `test/helpers/`.
 
 ---
 
