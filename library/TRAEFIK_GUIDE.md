@@ -36,7 +36,7 @@
 24. [Load Balancing and Handling 500k Users](#24-load-balancing-and-handling-500k-users) **[A]**
 25. [Scaling, Traffic Spikes and Performance](#25-scaling-traffic-spikes-and-performance) **[A]**
 26. [CI/CD — GitHub Actions Auto-Deploy to the VPS](#26-cicd--github-actions-auto-deploy-to-the-vps) **[A]**
-27. [The Complete Compose and File Layout](#27-the-complete-compose-and-file-layout) **[I/A]**
+27. [Building ScoreLive — Every File and the Full Stack](#27-building-scorelive--every-file-and-the-full-stack) **[I/A]**
 28. [Operations for the SaaS](#28-operations-for-the-saas) **[A]**
 29. [Gotchas and Best Practices](#29-gotchas-and-best-practices) **[A]**
 30. [Study Path and Build-to-Learn Projects](#30-study-path-and-build-to-learn-projects)
@@ -1405,9 +1405,718 @@ Two rules: use a **dedicated deploy SSH key** (its own pair, in `deploy`'s `auth
 
 ---
 
-## 27. The Complete Compose and File Layout
+## 27. Building ScoreLive — Every File and the Full Stack
 
-### 27.1 The whole stack in one Compose file **[I/A]**
+This is the hands-on section: the actual files you write to build ScoreLive, in the order you write them. It is deliberately concrete — a beginner can follow it top to bottom and end up with a running system. Where a file's *internals* are taught in depth elsewhere (Argon2 hashing, JWT signing, the SSE hub mechanics), we show the exact ScoreLive version and point to the sibling guide for the theory, so this stays buildable without re-teaching six other guides. Every code block is headed with its file path.
+
+### 27.1 The build order — what to do, in sequence **[I/A]**
+
+Follow these steps in order; each produces working, testable progress:
+
+1. **Scaffold the monorepo** (§16.1 tree): create `apps/api`, `apps/web`, `infra/`.
+2. **Backend config** (§27.2) → **Ent schema + migration** (§27.7) → **the store** (§27.4) → **SSE hub + backplane** (§27.5) → **handlers + auth** (§27.6) → **`main.go`** (§27.3). Run it locally with `air` against a local Postgres+Redis; hit `/healthz`.
+3. **Dockerize** the API and web (§27.8).
+4. **Traefik config**: `traefik.yml` (static) + `dynamic/security.yml` (§27.9), and `redis.conf` (§19.3).
+5. **The data tier**: Postgres primary + **replica init** (§27.10) + Redis.
+6. **The frontend** (§27.11): the API client + a live-scores page consuming SSE + the admin build.
+7. **Compose it all** (§27.12) and `docker compose up -d` on your dev box; verify routing via the Traefik dashboard.
+8. **Go to production**: point DNS at the VPS, harden the host (§14), lock the origin to Cloudflare (§15.4), wire CI/CD (§26). Load-test (§25.4).
+
+You now build each file. Start a local Postgres and Redis (`docker run` or a dev compose) so you can run the API as you go.
+
+### 27.2 Backend config — `internal/config/config.go` **[I/A]**
+
+```go
+// apps/api/internal/config/config.go
+package config
+
+import (
+	"os"
+
+	"github.com/joho/godotenv"
+)
+
+// Config is loaded once at startup from the environment (godotenv fills it in dev).
+type Config struct {
+	WriteDSN    string   // → pg-primary
+	ReadDSN     string   // → pg-replica
+	ShardDSNs   []string // optional write shards (§18.3); empty = single primary
+	RedisAddr   string
+	RedisPass   string
+	JWTSecret   []byte
+	Port        string
+}
+
+func Load() (*Config, error) {
+	_ = godotenv.Load() // in dev, read .env; in prod, real env vars already exist (no error if absent)
+	return &Config{
+		WriteDSN:  mustEnv("DATABASE_WRITE_URL"),
+		ReadDSN:   getEnv("DATABASE_READ_URL", mustEnv("DATABASE_WRITE_URL")), // fall back to primary if no replica
+		RedisAddr: getEnv("REDIS_ADDR", "redis:6379"),
+		RedisPass: readSecretFile(getEnv("REDIS_PASSWORD_FILE", "")),
+		JWTSecret: []byte(readSecretFile(mustEnv("JWT_SECRET_FILE"))),
+		Port:      getEnv("PORT", "8080"),
+	}, nil
+}
+
+func mustEnv(k string) string {
+	v := os.Getenv(k)
+	if v == "" {
+		panic("missing required env: " + k)
+	}
+	return v
+}
+func getEnv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+// readSecretFile reads a Docker-secret file path (the *_FILE convention); "" → "".
+func readSecretFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	b, _ := os.ReadFile(path)
+	return string(b)
+}
+```
+
+Config is read **once**, into a typed struct, from the environment — the 12-factor rule. Secrets come from files (`*_FILE`, the Docker-secret convention from §14) so they never sit in env vars visible to `docker inspect`.
+
+### 27.3 The entry point — `cmd/server/main.go` **[I/A]**
+
+```go
+// apps/api/cmd/server/main.go
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/scorelive/api/internal/config"
+	httpx "github.com/scorelive/api/internal/http"
+	"github.com/scorelive/api/internal/redis"
+	"github.com/scorelive/api/internal/sse"
+	"github.com/scorelive/api/internal/store"
+)
+
+func main() {
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)) // structured JSON logs (§11.1)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("config", "err", err)
+		os.Exit(1)
+	}
+
+	// Data layer: read/write pgx pools (§27.4), Redis (cache + backplane + rate limits).
+	st, err := store.Open(ctx, cfg)
+	if err != nil {
+		log.Error("store open", "err", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	rdb := redis.New(cfg)
+	defer rdb.Close()
+
+	// The SSE hub: fans score events out to connected clients; subscribes to Redis so a
+	// score entered on ANY instance reaches this instance's clients (§17.3).
+	hub := sse.NewHub(log)
+	go hub.Run(ctx)
+	go hub.SubscribeBackplane(ctx, rdb) // Redis pub/sub → local fan-out
+
+	// Gin router with all REST + SSE routes and middleware (§27.6).
+	gin.SetMode(gin.ReleaseMode)
+	r := httpx.NewRouter(log, cfg, st, rdb, hub)
+
+	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		log.Info("listening", "port", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("serve", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done() // SIGTERM (a deploy) → graceful shutdown so Traefik can drain us cleanly (§20.2)
+	log.Info("shutting down")
+	shutCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutCtx) // finishes in-flight requests; SSE handlers return on ctx cancel
+}
+```
+
+`main.go` is pure **wiring**: load config → open the data layer → start the SSE hub and its Redis subscription → build the router → serve → graceful shutdown on `SIGTERM` (so a rolling deploy drains cleanly, §20.2). Everything else lives in `internal/`.
+
+### 27.4 The store — read/write pools and sharding — `internal/store/store.go` **[I/A]**
+
+```go
+// apps/api/internal/store/store.go
+package store
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/scorelive/api/internal/config"
+)
+
+// Store holds a WRITE pool (→ primary) and a READ pool (→ replica). Optionally shards.
+type Store struct {
+	write  *pgxpool.Pool   // pg-primary: writes + read-your-writes
+	read   *pgxpool.Pool   // pg-replica: bulk reads that tolerate slight lag (§18.2)
+	shards []*pgxpool.Pool // optional write shards (§18.3); nil = single primary
+}
+
+func Open(ctx context.Context, cfg *config.Config) (*Store, error) {
+	// pgxpool: bounded connections shared across thousands of goroutines. Tune the pool
+	// size so (instances × pool) stays under Postgres max_connections (pgx guide §22).
+	w, err := pgxpool.New(ctx, cfg.WriteDSN)
+	if err != nil {
+		return nil, err
+	}
+	rd, err := pgxpool.New(ctx, cfg.ReadDSN)
+	if err != nil {
+		w.Close()
+		return nil, err
+	}
+	s := &Store{write: w, read: rd}
+	for _, dsn := range cfg.ShardDSNs { // open a pool per shard, if configured
+		p, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			return nil, err
+		}
+		s.shards = append(s.shards, p)
+	}
+	return s, nil
+}
+
+func (s *Store) Close() {
+	s.write.Close()
+	s.read.Close()
+	for _, p := range s.shards {
+		p.Close()
+	}
+}
+
+// writePool picks the shard that OWNS this competition (same key → same shard, always),
+// or the single primary when not sharding. This is application-level sharding (§18.3).
+func (s *Store) writePool(competitionID int64) *pgxpool.Pool {
+	if len(s.shards) == 0 {
+		return s.write
+	}
+	return s.shards[competitionID%int64(len(s.shards))]
+}
+
+// SetScore is a WRITE → goes to the owning shard/primary. Read-after-write reads use write too.
+func (s *Store) SetScore(ctx context.Context, competitionID, matchID int64, home, away int) error {
+	_, err := s.writePool(competitionID).Exec(ctx,
+		`UPDATE matches SET home_score=$1, away_score=$2, updated_at=now() WHERE id=$3`,
+		home, away, matchID)
+	return err
+}
+
+// ListLiveMatches is a bulk READ → goes to the REPLICA (slight staleness is fine; SSE
+// pushes the fresh number anyway). Parameterized query → injection-proof (§23.3).
+func (s *Store) ListLiveMatches(ctx context.Context) ([]Match, error) {
+	rows, err := s.read.Query(ctx,
+		`SELECT id, competition_id, home, away, home_score, away_score, status
+		 FROM matches WHERE status='live' ORDER BY started_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Match
+	for rows.Next() {
+		var m Match
+		if err := rows.Scan(&m.ID, &m.CompetitionID, &m.Home, &m.Away, &m.HomeScore, &m.AwayScore, &m.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+type Match struct {
+	ID, CompetitionID              int64
+	Home, Away, Status             string
+	HomeScore, AwayScore           int
+}
+```
+
+This is the heart of the data-scaling design (§18): **writes** go to `writePool(competitionID)` — the owning shard or the single primary; **reads** go to the `read` replica pool. The `%len(shards)` mapping is deterministic so a competition always lands on the same shard. (For richer queries, drop in the Ent client instead of raw pgx — the [Ent guide](GO_ENT_ORM_GUIDE.md) — over the same pools.)
+
+### 27.5 The SSE hub and Redis backplane — `internal/sse/hub.go` **[I/A]**
+
+```go
+// apps/api/internal/sse/hub.go
+package sse
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+
+	"github.com/redis/go-redis/v9"
+)
+
+// Event is one score update pushed to clients.
+type Event struct {
+	MatchID int64  `json:"matchId"`
+	Home    int    `json:"home"`
+	Away    int    `json:"away"`
+	ID      string `json:"-"` // SSE id for Last-Event-ID resume
+}
+
+type client struct{ send chan Event }
+
+// Hub: single-owner goroutine owns the client set (no locks, no races — Go SSE guide §5).
+type Hub struct {
+	log        *slog.Logger
+	register   chan *client
+	unregister chan *client
+	broadcast  chan Event
+	clients    map[*client]struct{}
+}
+
+func NewHub(log *slog.Logger) *Hub {
+	return &Hub{
+		log: log, register: make(chan *client), unregister: make(chan *client),
+		broadcast: make(chan Event, 1024), clients: make(map[*client]struct{}),
+	}
+}
+
+func (h *Hub) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case c := <-h.register:
+			h.clients[c] = struct{}{}
+		case c := <-h.unregister:
+			if _, ok := h.clients[c]; ok {
+				delete(h.clients, c)
+				close(c.send)
+			}
+		case ev := <-h.broadcast:
+			for c := range h.clients {
+				select { // NON-blocking: drop a slow client rather than stall the hub (backpressure)
+				case c.send <- ev:
+				default:
+					delete(h.clients, c)
+					close(c.send)
+				}
+			}
+		}
+	}
+}
+
+// Publish sends a score to Redis so EVERY instance (not just this one) fans it out.
+// Call this from the score handler AFTER persisting (persist-then-broadcast, §17.3).
+func (h *Hub) Publish(ctx context.Context, rdb *redis.Client, ev Event) error {
+	b, _ := json.Marshal(ev)
+	return rdb.Publish(ctx, "scores", b).Err()
+}
+
+// SubscribeBackplane runs for the process's life: everything on the Redis "scores"
+// channel → this instance's local broadcast → its connected clients (§17.3).
+func (h *Hub) SubscribeBackplane(ctx context.Context, rdb *redis.Client) {
+	sub := rdb.Subscribe(ctx, "scores")
+	defer sub.Close()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-sub.Channel():
+			var ev Event
+			if json.Unmarshal([]byte(msg.Payload), &ev) == nil {
+				select {
+				case h.broadcast <- ev:
+				default: // hub buffer full under extreme load — drop; clients resume via Last-Event-ID
+				}
+			}
+		}
+	}
+}
+```
+
+This is the multi-instance fan-out: a score `Publish`ed to Redis on `api-1` is received by *every* instance's `SubscribeBackplane`, each of which broadcasts to its own local SSE clients. One write reaches 500k screens across N instances. The hub's non-blocking send is the backpressure guard (a slow client is dropped, not allowed to stall everyone) — the exact pattern from the [Go SSE guide](GO_SSE_GUIDE.md) §5, here wired to a Redis backplane for horizontal scale.
+
+### 27.6 Handlers, auth and the router — `internal/http/` **[I/A]**
+
+```go
+// apps/api/internal/http/router.go
+package http
+
+import (
+	"log/slog"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/scorelive/api/internal/config"
+	"github.com/scorelive/api/internal/sse"
+	"github.com/scorelive/api/internal/store"
+)
+
+func NewRouter(log *slog.Logger, cfg *config.Config, st *store.Store, rdb *redis.Client, hub *sse.Hub) *gin.Engine {
+	r := gin.New()
+	r.Use(gin.Recovery())
+	// Behind Cloudflare+Traefik: trust the proxy so c.ClientIP() returns the REAL client (§15.5).
+	_ = r.SetTrustedProxies([]string{"0.0.0.0/0"}) // in prod: Traefik's docker network only
+
+	h := &Handler{cfg: cfg, st: st, rdb: rdb, hub: hub, log: log}
+
+	r.GET("/healthz", h.Health) // Traefik + Docker health checks (§7.2)
+
+	// Public REST
+	pub := r.Group("/")
+	pub.POST("/auth/login", h.Login)         // Argon2id verify → JWT (JWT/Argon2 guide)
+	pub.GET("/matches/live", h.ListLive)      // reads from the replica (cached in Redis)
+
+	// The SSE live stream (its own host sse.scorelive.com, routed by Traefik).
+	r.GET("/stream", h.RequireAuth(), h.Stream)
+
+	// Admin — protected by JWT owner-role HERE, and by Traefik ipAllowList at the EDGE (§21).
+	admin := r.Group("/admin", h.RequireAuth(), h.RequireOwner())
+	admin.POST("/matches/:id/score", h.SetScore)
+
+	return r
+}
+```
+
+```go
+// apps/api/internal/http/handlers.go  (the key handlers; auth internals per the JWT/Argon2 guide)
+package http
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/scorelive/api/internal/sse"
+)
+
+func (h *Handler) Health(c *gin.Context) {
+	// Cheap check the app can reach its deps; returns 200 only if healthy (Traefik routes on this).
+	if err := h.st.Ping(c.Request.Context()); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// SetScore: owner-only (RequireOwner + edge IP allow-list). Persist THEN broadcast (§17.3).
+func (h *Handler) SetScore(c *gin.Context) {
+	matchID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var body struct {
+		CompetitionID int64 `json:"competitionId"`
+		Home, Away    int   `json:"home"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	// 1) PERSIST to the owning shard/primary (durable; reconnecting clients replay from here).
+	if err := h.st.SetScore(c.Request.Context(), body.CompetitionID, matchID, body.Home, body.Away); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "write failed"})
+		return
+	}
+	// 2) Invalidate/refresh the Redis cache for this match (so ListLive reads the new value).
+	h.cacheScore(c.Request.Context(), matchID, body.Home, body.Away)
+	// 3) BROADCAST via Redis → every instance → all subscribed fans, instantly.
+	_ = h.hub.Publish(c.Request.Context(), h.rdb, sse.Event{MatchID: matchID, Home: body.Home, Away: body.Away})
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// Stream: the SSE endpoint. Registers with the hub and forwards events until the client leaves.
+func (h *Handler) Stream(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("X-Accel-Buffering", "no") // don't let any proxy buffer the stream (§15.6)
+	cl := h.hub.Add()                                 // register; returns the client's channel
+	defer h.hub.Remove(cl)
+
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case <-c.Request.Context().Done():
+			return false // client disconnected or server shutting down
+		case ev, ok := <-cl.Send():
+			if !ok {
+				return false
+			}
+			c.SSEvent("score", ev) // frame: event: score\n data: {...}\n\n
+			return true
+		}
+	})
+}
+```
+
+The score flow is the whole SaaS in one handler: **persist → cache → broadcast**. Owner-only is enforced twice (JWT role here + Traefik IP allow-list at the edge, §21 — defense in depth). The `Stream` handler is the [Go SSE guide](GO_SSE_GUIDE.md)'s pattern; `Login`/`RequireAuth`/`RequireOwner` (Argon2id verify, JWT issue/validate, role check) are exactly the [JWT/Argon2 guide](GO_JWT_ARGON2_GUIDE.md)'s code — import that guide's `password` and `token` packages rather than re-deriving them.
+
+### 27.7 Ent schema and goose migration **[I/A]**
+
+```go
+// apps/api/ent/schema/match.go
+package schema
+
+import (
+	"entgo.io/ent"
+	"entgo.io/ent/schema/field"
+)
+
+type Match struct{ ent.Schema }
+
+func (Match) Fields() []ent.Field {
+	return []ent.Field{
+		field.Int64("competition_id"),          // the SHARD KEY (§18.3) — keep related data together
+		field.String("home"),
+		field.String("away"),
+		field.Int("home_score").Default(0),
+		field.Int("away_score").Default(0),
+		field.Enum("status").Values("scheduled", "live", "finished").Default("scheduled"),
+		field.Time("started_at").Optional(),
+		field.Time("updated_at").Default(nil),
+	}
+}
+```
+
+```sql
+-- apps/api/migrations/0001_matches.sql  (goose — run as a gated deploy step, never on boot)
+-- +goose Up
+CREATE TABLE matches (
+	id             BIGSERIAL PRIMARY KEY,
+	competition_id BIGINT      NOT NULL,
+	home           TEXT        NOT NULL,
+	away           TEXT        NOT NULL,
+	home_score     INT         NOT NULL DEFAULT 0,
+	away_score     INT         NOT NULL DEFAULT 0,
+	status         TEXT        NOT NULL DEFAULT 'scheduled',
+	started_at     TIMESTAMPTZ,
+	updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Index the hot query (live matches) and the shard key.
+CREATE INDEX matches_status_idx ON matches (status) WHERE status = 'live';
+CREATE INDEX matches_competition_idx ON matches (competition_id);
+
+-- +goose Down
+DROP TABLE matches;
+```
+
+goose owns the schema (versioned, reviewed, run as a deliberate step — the [goose guide](GO_GOOSE_MIGRATIONS_GUIDE.md)); Ent generates the type-safe query layer over it (the [Ent guide](GO_ENT_ORM_GUIDE.md)). The `competition_id` is the shard key, and it's indexed. Run `docker compose run --rm api /app migrate up` at deploy (§26.3) — the app never auto-migrates on boot.
+
+### 27.8 The Dockerfiles **[I/A]**
+
+```dockerfile
+# apps/api/Dockerfile — multi-stage → tiny, non-root image (§10.4)
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app ./cmd/server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /app /app
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/app"]
+```
+
+```dockerfile
+# apps/web/Dockerfile — Next.js standalone output → small runtime image
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build          # produces .next/standalone with next.config output:"standalone"
+
+FROM node:22-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+Both use multi-stage builds and run as **non-root** — a tiny attack surface, tiny images (fast pulls during a scale-up). The API's `distroless` base has no shell at all.
+
+### 27.9 Traefik static + dynamic config **[I/A]**
+
+```yaml
+# infra/traefik/traefik.yml — STATIC config (the engine)
+global: { checkNewVersion: false, sendAnonymousUsage: false }
+
+entryPoints:
+  web:
+    address: ":80"
+    http: { redirections: { entryPoint: { to: websecure, scheme: https } } }
+  websecure:
+    address: ":443"
+    http3: {}
+    forwardedHeaders:
+      trustedIPs: ["173.245.48.0/20", "103.21.244.0/22"]   # Cloudflare ranges (full list) — §15.5
+  metrics:
+    address: ":8082"                                        # Prometheus scrape (internal only)
+
+providers:
+  docker:
+    endpoint: "tcp://dockerproxy:2375"                      # via the read-only socket proxy (§23.2)
+    exposedByDefault: false
+    network: edge
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  le-dns:
+    acme:
+      email: ops@scorelive.com
+      storage: /letsencrypt/acme.json
+      dnsChallenge: { provider: cloudflare, resolvers: ["1.1.1.1:53"] }  # wildcard certs (§9.3)
+
+api: { dashboard: true }
+log: { level: INFO }
+accessLog:
+  format: json
+  filters: { statusCodes: ["400-599"] }
+  fields: { headers: { names: { Authorization: drop } } }   # never log tokens (§11.1)
+metrics: { prometheus: { entryPoint: metrics, addRoutersLabels: true } }
+```
+
+```yaml
+# infra/traefik/dynamic/security.yml — shared DYNAMIC config (hot-reloaded)
+http:
+  middlewares:
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+        customResponseHeaders: { Server: "" }
+    dash-auth:
+      basicAuth:
+        users: ["admin:$2y$05$replace-with-htpasswd-bcrypt-hash"]
+tls:
+  options:
+    modern: { minVersion: VersionTLS12, sniStrict: true }
+```
+
+The static file is the engine (entrypoints, providers, ACME, metrics, the Cloudflare `trustedIPs` that make `ipStrategy` work); the dynamic file holds shared middlewares and TLS options, hot-reloaded on save. Reference them from container labels as `security-headers@file`, `modern@file` (§4.3).
+
+
+
+### 27.10 The Postgres primary and read replica **[I/A]**
+
+The primary needs a replication user and settings; the replica clones the primary once (`pg_basebackup`) then streams changes. An init script wires this up:
+
+```bash
+# infra/postgres/setup-replica.sh — runs ONCE in the replica container to clone the primary.
+#!/usr/bin/env bash
+set -euo pipefail
+# Wait for the primary, then base-backup into the replica's data dir and start streaming.
+until pg_isready -h pg-primary -U replicator; do sleep 2; done
+if [ ! -s "/var/lib/postgresql/data/PG_VERSION" ]; then     # only clone if empty
+	PGPASSWORD="$(cat /run/secrets/pg_pw)" pg_basebackup \
+		-h pg-primary -U replicator -D /var/lib/postgresql/data -Fp -Xs -P -R
+	# -R writes standby.signal + primary_conninfo so this instance boots as a streaming replica.
+fi
+exec postgres -c hot_standby=on
+```
+
+```sql
+-- infra/postgres/init-primary.sql — create the replication role on the primary (runs once).
+CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'from-secret';
+-- pg_hba: allow the replica to connect for replication (on the private backend network only):
+--   host replication replicator  <backend-subnet>  scram-sha-256
+```
+
+The primary's `wal_level=replica` + `max_wal_senders` (set via `command:` in Compose, §27.12) let it feed replicas; the replica's `pg_basebackup ... -R` makes it a streaming standby that stays in sync. Reads then go to the replica, writes to the primary (§27.4). For production HA (automatic failover), a tool like Patroni promotes the replica if the primary dies — the [Database Server Admin guide](DATABASE_SERVER_ADMIN_GUIDE.md) covers that; here we have the read-scaling replica, which is the immediate win.
+
+### 27.11 The Next.js frontend **[I/A]**
+
+The API client holds the access token **in memory** (XSS-safe) and consumes SSE. Two small but complete files:
+
+```ts
+// apps/web/lib/api.ts — the typed API client (in-memory token + credentialed fetch)
+let accessToken: string | null = null;   // in MEMORY, never localStorage (XSS-safe, §22.3)
+
+export async function login(email: string, password: string) {
+	const res = await fetch("https://api.scorelive.com/auth/login", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		credentials: "include",             // receive the HttpOnly refresh cookie
+		body: JSON.stringify({ email, password }),
+	});
+	if (!res.ok) throw new Error("login failed");
+	accessToken = (await res.json()).accessToken;
+}
+
+export async function apiGet<T>(path: string): Promise<T> {
+	const res = await fetch(`https://api.scorelive.com${path}`, {
+		headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+		credentials: "include",
+	});
+	// on 401: silent-refresh via the cookie, then retry (omitted here for brevity)
+	return res.json();
+}
+```
+
+```tsx
+// apps/web/app/(public)/live/page.tsx — the live-scores page, consuming SSE
+"use client";
+import { useEffect, useState } from "react";
+
+type Score = { matchId: number; home: number; away: number };
+
+export default function LivePage() {
+	const [scores, setScores] = useState<Record<number, Score>>({});
+
+	useEffect(() => {
+		// EventSource to the SSE host; withCredentials sends the auth cookie (§22.3).
+		const es = new EventSource("https://sse.scorelive.com/stream", { withCredentials: true });
+		// Named "score" events (matches c.SSEvent("score", ...) on the backend, §27.6).
+		es.addEventListener("score", (e) => {
+			const s: Score = JSON.parse((e as MessageEvent).data);
+			setScores((prev) => ({ ...prev, [s.matchId]: s }));   // update ONLY the changed match
+		});
+		es.onerror = () => {/* browser auto-reconnects; server replays via Last-Event-ID */};
+		return () => es.close();   // CLEANUP on unmount — or you leak a stream (§22.4)
+	}, []);
+
+	return (
+		<ul>
+			{Object.values(scores).map((s) => (
+				<li key={s.matchId}>{s.home} – {s.away}</li>
+			))}
+		</ul>
+	);
+}
+```
+
+The client never trusts itself: the token lives in memory, the backend authorizes every call, and the SSE stream updates *only the changed match* (no full re-render, no polling — §22.4). The **admin build** is the same codebase with the `(admin)` route group and `NEXT_PUBLIC_MODE=admin`, shipped as a separate image (`web-admin`) that only runs behind Traefik's IP allow-list (§21) — so the admin JavaScript never reaches a public browser.
+
+### 27.12 The whole stack in one Compose file **[I/A]**
 
 Here is the production stack assembled — Traefik + the socket proxy + the API fleet + both frontends + Postgres primary/replica + Redis, with the two-network isolation. Read the comments; every choice traces to a section above.
 
@@ -1554,7 +2263,7 @@ secrets:
   jwt:      { file: ./secrets/jwt.txt }
 ```
 
-### 27.2 The full file tree **[I/A]**
+### 27.13 The full file tree **[I/A]**
 
 ```text
 scorelive/
