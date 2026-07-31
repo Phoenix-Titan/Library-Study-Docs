@@ -1049,6 +1049,8 @@ Supported method exports: `GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS`.
 
 ## 14. Metadata & SEO
 
+> **Going deeper — the dedicated SEO + launch guide:** This section is the essentials. For a **complete, production, beginner→master treatment** — the Metadata API in full, canonicals & duplicate content, Open Graph & generated OG images, JSON-LD structured data & rich results, `robots.ts`/`sitemap.ts` (incl. dynamic & large-site sitemaps), redirects & indexing control & crawl budget, hreflang, Core Web Vitals, **and the entire go-live pipeline** (buy a domain, **Namecheap DNS**, deploy to **Vercel** with a custom HTTPS domain, verify in **Google Search Console** & **Bing Webmaster Tools** + **IndexNow**, protect forms with **Cloudflare Turnstile**, wire up analytics, and monitor/iterate) — read the companion **[Next.js 16 SEO and Going to Production](NEXTJS_SEO_GUIDE.md)** guide. It takes a first-timer all the way from `localhost` to a search-visible production site.
+
 SEO is one of the top reasons clients pick Next.js, and the **Metadata API** makes it clean and type-safe. You export a `metadata` object (static) or a `generateMetadata` function (dynamic) from a `layout` or `page`, and Next.js renders the right `<head>` tags — title, description, Open Graph, Twitter cards, canonical URLs — into the server HTML where crawlers can see them.
 
 ### 14.1 Static metadata **[I]**
