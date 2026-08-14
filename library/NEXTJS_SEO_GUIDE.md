@@ -491,11 +491,13 @@ export default async function Post({ params }: { params: Promise<{ slug: string 
 
   return (
     <>
-      {/* Server-rendered <script> — crawlers read it directly. JSON.stringify escapes safely,
-          but for user-influenced fields also guard against </script> injection (§7.4). */}
+      {/* Server-rendered <script> — crawlers read it directly. We escape "<" so that any
+          user-influenced field (a title, author name, or review) that contains the literal
+          "</script>" cannot break out of the tag — a real XSS vector that JSON.stringify
+          alone does NOT prevent (it does not escape "<"). Safe by default; see §7.4. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
       <article>{/* the visible content */}</article>
     </>
@@ -526,7 +528,7 @@ Put **Organization** and **WebSite** in the root layout (site-wide identity), **
 
 **Validate every schema** with Google's **Rich Results Test** (search.google.com/test/rich-results) and the **Schema Markup Validator** — they parse your live URL, show which rich results you're eligible for, and flag errors/warnings. Invalid structured data simply won't produce rich results (and egregious abuse can earn a manual penalty), so validate before and after deploy, and re-check in Search Console's **Enhancements** reports (§18.4) which show rich-result coverage over time.
 
-> **⚡ Security note:** if any field in your JSON-LD comes from user input (a review, a user-supplied title), a naive `JSON.stringify` can't produce a literal `</script>` inside a string, but you should still guard against it by replacing `<` with `<` in the serialized output: `JSON.stringify(jsonLd).replace(/</g, "\\u003c")`. This prevents a `</script>` in user data from breaking out of the script tag (an XSS vector). Do this whenever the structured data includes anything a user can influence.
+> **⚡ Security note (XSS — already applied in §7.2):** `JSON.stringify` does **not** escape `<`, so if any JSON-LD field carries user input (a review, a user-supplied title, an author name) that contains the literal `</script>`, the serialized JSON would **break out of the `<script>` tag** and inject arbitrary markup — a real stored-XSS vector. The fix is to escape `<` in the serialized output: `JSON.stringify(jsonLd).replace(/</g, "\\u003c")` — which the §7.2 example does by default. Keep that escape whenever the structured data includes anything a user can influence, which is most real sites (blog titles, product names, reviews all flow into JSON-LD). This is the one genuinely dangerous part of adding JSON-LD, so make it the default, not an afterthought.
 
 ---
 
